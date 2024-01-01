@@ -32,7 +32,29 @@ provider:
     COMPANY_TABLE: ${self:custom.companyTableName}
     TEAM_TABLE: ${self:custom.teamTableName}
     ATTENDANCE_TABLE: ${self:custom.attendanceTableName}
-    
+
+functions:
+  api:
+    handler: index.handler
+    events:
+      - httpApi:
+          path: /api/{proxy+}
+          method: ANY
+
+  users:
+    handler: users.handler
+    events:
+      - httpApi:
+          path: /api/users/{proxy+}
+          method: ANY
+
+  calendar:
+    handler: calendar.handler
+    events:
+      - httpApi:
+          path: /api/calendar/{proxy+}  
+          method: ANY
+
 custom:
   adminsTableName: admins
   employeesTableName: employees
