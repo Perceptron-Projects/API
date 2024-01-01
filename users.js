@@ -168,7 +168,82 @@ app.get("/api/users/supervisors/all", rolesMiddleware(["admin"]), async function
 
 app.get("/api/users/hr/all", rolesMiddleware(["admin"]), async function (req, res) {}
 
-app.post("/api/users/create-user", rolesMiddleware(["admin"]), async function (req, res) {}
+app.post("/api/users/create-user", rolesMiddleware(["admin"]), async function (req, res) {
+   const { name, email, password, role, username, contactNo, birthday, joinday, permissions } = req.body;
+
+  // Validate input data
+  if (
+    typeof name !== "string" ||
+    typeof email !== "string" ||
+    typeof password !== "string" ||
+    typeof role !== "string" ||
+    typeof username !== "string" ||
+    typeof contactNo !== "string" ||
+    typeof birthday !== "string" ||
+    typeof joinday !== "string" ||
+    !Array.isArray(permissions)
+  ) {
+    res.status(400).json({ error: "Invalid input data" });
+    return;
+  }
+
+  const adminUserId = req.user.userId; // Assuming you have the authenticated user info in req.user
+
+  // Retrieve the admin's company information from the database
+  const adminParams = {
+    TableName: ADMINS_TABLE, // Change this table name accordingly
+    Key: {
+      userId: adminUserId,
+    },
+  };
+
+  try {
+    const { Item: admin } = await dynamoDbClient.send(new GetCommand(adminParams));
+
+    if (!admin || !admin.companyId) {
+      res.status(400).json({ error: "Admin information not found or missing companyId" });
+      return;
+    }
+
+    const userId = uuidv4();
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const params = {
+      TableName: EMPLOYEES_TABLE, // Assuming EMPLOYEES_TABLE is used for HR users
+      Item: {
+        userId: userId,
+        name: name,
+        email: email,
+        password: hashedPassword,
+        role: role,
+        username: username,
+        contactNo: contactNo,
+        birthday: birthday,
+        joinday: joinday,
+        permissions: permissions,
+        companyId: admin.companyId, // Include the companyId from the admin
+      },
+    };
+
+    await dynamoDbClient.send(new PutCommand(params));
+    res.json({
+      userId,
+      name,
+      email,
+      role,
+      username,
+      contactNo,
+      birthday,
+      joinday,
+      permissions,
+      companyId: admin.companyId,
+    });
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({ error: "Could not create user" });
+  }
+});
+
 
 app.post("/api/users/company/create", rolesMiddleware(["superadmin"]), async function (req, res) {}
 
