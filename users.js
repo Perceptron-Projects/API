@@ -39,7 +39,88 @@ app.use((req, res, next) => {
 
 app.get("/api/users/:userId", rolesMiddleware(["admin","hr","employee"]), async function (req, res) {}
 
-app.put("/api/users/edit/:userId", rolesMiddleware(["admin"]), async function (req, res) {}
+app.put("/api/users/edit/:userId", rolesMiddleware(["admin"]), async function (req, res) {
+  const { name, email, role, username, contactNo, birthday, joinday, permissions } = req.body;
+  const userId = req.params.userId;
+
+  // Validate input data
+  if (
+    typeof name !== "string" ||
+    typeof email !== "string" ||
+    typeof role !== "string" ||
+    typeof username !== "string" ||
+    typeof contactNo !== "string" ||
+    typeof birthday !== "string" ||
+    typeof joinday !== "string" ||
+    !Array.isArray(permissions)
+  ) {
+    res.status(400).json({ error: "Invalid input data" });
+    return;
+  }
+
+  // Check if the userId exists in the EMPLOYEES_TABLE
+  const userParams = {
+    TableName: EMPLOYEES_TABLE,
+    Key: {
+      userId: userId,
+    },
+  };
+
+  try {
+    const { Item: user } = await dynamoDbClient.send(new GetCommand(userParams));
+
+    if (!user) {
+      res.status(400).json({ error: "User not found with the provided userId" });
+      return;
+    }
+
+    // Update the specified fields
+    const updateParams = {
+      TableName: EMPLOYEES_TABLE,
+      Key: {
+        userId: userId,
+      },
+      UpdateExpression: "SET #name = :name, #email = :email, #role = :role, #username = :username, #contactNo = :contactNo, #birthday = :birthday, #joinday = :joinday, #permissions = :permissions",
+      ExpressionAttributeNames: {
+        "#name": "name",
+        "#email": "email",
+        "#role": "role",
+        "#username": "username",
+        "#contactNo": "contactNo",
+        "#birthday": "birthday",
+        "#joinday": "joinday",
+        "#permissions": "permissions",
+      },
+      ExpressionAttributeValues: {
+        ":name": name,
+        ":email": email,
+        ":role": role,
+        ":username": username,
+        ":contactNo": contactNo,
+        ":birthday": birthday,
+        ":joinday": joinday,
+        ":permissions": permissions,
+      },
+    };
+
+    await dynamoDbClient.send(new UpdateCommand(updateParams));
+
+    res.json({
+      userId,
+      name,
+      email,
+      role,
+      username,
+      contactNo,
+      birthday,
+      joinday,
+      permissions,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Could not update user" });
+  }
+});
 
 app.get("/api/users/employees/all", rolesMiddleware(["admin"]), async function (req, res) {}
 
