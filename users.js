@@ -41,7 +41,47 @@ app.get("/api/users/:userId", rolesMiddleware(["admin","hr","employee"]), async 
 
 app.put("/api/users/edit/:userId", rolesMiddleware(["admin"]), async function (req, res) {}
 
-app.get("/api/users/employees/all", rolesMiddleware(["admin"]), async function (req, res) {}
+app.get("/api/users/employees/all", rolesMiddleware(["admin"]), async function (req, res) {
+  try {
+    const adminUserId = req.user.userId;
+
+    // Retrieve the admin's company information from the database
+    const adminParams = {
+      TableName: ADMINS_TABLE,
+      Key: {
+        userId: adminUserId,
+      },
+    };
+
+    const { Item: admin } = await dynamoDbClient.send(new GetCommand(adminParams));
+
+    if (!admin || !admin.companyId) {
+      res.status(400).json({ error: "Admin information not found or missing companyId" });
+      return;
+    }
+
+    // Retrieve all employees for the admin's company
+    const employeeParams = {
+      TableName: EMPLOYEES_TABLE,
+      FilterExpression: "#companyId = :companyId AND #role = :role",
+      ExpressionAttributeNames: {
+        "#companyId": "companyId",
+        "#role": "role",
+      },
+      ExpressionAttributeValues: {
+        ":companyId": admin.companyId,
+        ":role": "employee",
+      },
+    };
+
+    const { Items: employeePersons } = await dynamoDbClient.send(new ScanCommand(employeeParams));
+
+    res.json(employeePersons);
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({ error: "Could not get employee persons" });
+  }
+});
 
 app.get("/api/users/supervisors/all", rolesMiddleware(["admin"]), async function (req, res) {}
 
