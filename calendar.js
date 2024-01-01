@@ -77,7 +77,32 @@ app.get("/api/calendar/holidays", rolesMiddleware(["admin","hr","employee"]), as
         
 app.get("/api/calendar/leaves/:day/:employeeId", rolesMiddleware(["admin","hr","employee"]), async function (req, res) {}
         
-app.get("/api/calendar/leaves/all", rolesMiddleware(["admin","hr"]), async function (req, res) {}
+app.get("/api/calendar/leaves/all", rolesMiddleware(["admin","hr"]), async function (req, res) {
+   try {
+      const params = {
+          TableName: LEAVES_CALENDAR_TABLE,
+      };
+
+      const { Items } = await dynamoDbClient.send(new ScanCommand(params));
+
+      if (Items && Items.length > 0) {
+        const formattedItems = Items.map(item => {
+          return {
+              LeaveType: item.LeaveType.S,
+              EmployeeId: item.EmployeeId.S,
+              Day: item.Day.S,
+          };
+      });
+
+      res.json(formattedItems);
+      } else {
+          res.status(404).json({ error: "No leaves found" });
+      }
+  } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Could not retrieve all leaves" });
+  }
+});
         
 app.post("/api/calendar/leaves", rolesMiddleware(["admin","hr","employee"]), async function (req, res) {}
 
