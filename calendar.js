@@ -69,4 +69,20 @@ app.get("/api/calendar/leaves/:day/:employeeId", rolesMiddleware(["admin","hr","
   }
 });
 
+app.get("/api/calendar/holidays/:day", rolesMiddleware(["admin","hr","employee"]), async function (req, res) {}
+
+app.post("/api/calendar/holidays", rolesMiddleware(["admin","hr"]), async function (req, res) {}
+
+app.get("/api/calendar/holidays", rolesMiddleware(["admin","hr","employee"]), async function (req, res) {}
+        
+app.get("/api/calendar/leaves/:day/:employeeId", rolesMiddleware(["admin","hr","employee"]), async function (req, res) {}
+        
+app.get("/api/calendar/leaves/all", rolesMiddleware(["admin","hr"]), async function (req, res) {}
+        
+app.post("/api/calendar/leaves", rolesMiddleware(["admin","hr","employee"]), async function (req, res) {}
+
+
+
+
+
 module.exports.handler = serverless(app);
