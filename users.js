@@ -164,7 +164,47 @@ app.get("/api/users/employees/all", rolesMiddleware(["admin"]), async function (
   }
 });
 
-app.get("/api/users/supervisors/all", rolesMiddleware(["admin"]), async function (req, res) {}
+app.get("/api/users/supervisors/all", rolesMiddleware(["admin"]), async function (req, res) {
+  try {
+    const adminUserId = req.user.userId;
+
+    // Retrieve the admin's company information from the database
+    const adminParams = {
+      TableName: ADMINS_TABLE,
+      Key: {
+        userId: adminUserId,
+      },
+    };
+
+    const { Item: admin } = await dynamoDbClient.send(new GetCommand(adminParams));
+
+    if (!admin || !admin.companyId) {
+      res.status(400).json({ error: "Admin information not found or missing companyId" });
+      return;
+    }
+
+    // Retrieve all supervisors for the admin's company
+    const supervisorParams = {
+      TableName: EMPLOYEES_TABLE,
+      FilterExpression: "#companyId = :companyId AND #role = :role",
+      ExpressionAttributeNames: {
+        "#companyId": "companyId",
+        "#role": "role",
+      },
+      ExpressionAttributeValues: {
+        ":companyId": admin.companyId,
+        ":role": "supervisor",
+      },
+    };
+
+    const { Items: supervisorPersons } = await dynamoDbClient.send(new ScanCommand(supervisorParams));
+
+    res.json(supervisorPersons);
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({ error: "Could not get supervisor persons" });
+  }
+});
 
 app.get("/api/users/hr/all", rolesMiddleware(["admin"]), async function (req, res) {}
 
