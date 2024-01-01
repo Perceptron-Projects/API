@@ -69,7 +69,36 @@ app.get("/api/calendar/leaves/:day/:employeeId", rolesMiddleware(["admin","hr","
   }
 });
 
-app.get("/api/calendar/holidays/:day", rolesMiddleware(["admin","hr","employee"]), async function (req, res) {}
+app.get("/api/calendar/holidays/:day", rolesMiddleware(["admin","hr","employee"]), async function (req, res) {
+   try {
+    const day = req.params.day;
+    console.log(day);
+
+    if (!isValidDate(day)) {
+      return res.status(400).json({ error: 'Invalid date format for "day"' });
+    } else {
+      const params = {
+        TableName: HOLIDAY_CALENDAR_TABLE,
+        Key: {
+          Day: day,
+        },
+      };
+
+      const { Item } = await dynamoDbClient.send(new GetCommand(params));
+
+      if (Item) {
+        res.json(Item);
+      } else {
+        res
+          .status(404)
+          .json({ error: "Could not find holiday for the provided day" });
+      }
+    }
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Could not retrieve holiday" });
+  }
+});
 
 app.post("/api/calendar/holidays", rolesMiddleware(["admin","hr"]), async function (req, res) {}
 
