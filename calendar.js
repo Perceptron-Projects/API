@@ -33,6 +33,21 @@ app.use((req, res, next) => {
   }
 });
 
+function isValidDate(dateString) {
+  const regEx = /^\d{4}-\d{2}-\d{2}$/;
+  if (!dateString.match(regEx)) {
+    return false;
+  }
+
+  const d = new Date(dateString);
+  const dNum = d.getTime();
+  if (!dNum && dNum !== 0) {
+    return false;
+  }
+
+  return d.toISOString().slice(0, 10) === dateString;
+}
+
 app.get("/api/calendar/leaves/:day/:employeeId", rolesMiddleware(["admin","hr","employee"]), async function (req, res) {
   try {
     const day = req.params.day;
