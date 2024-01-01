@@ -37,7 +37,21 @@ app.use((req, res, next) => {
   }
 });
 
+app.get("/api/users/:userId", rolesMiddleware(["admin","hr","employee"]), async function (req, res) {}
 
+app.put("/api/users/edit/:userId", rolesMiddleware(["admin"]), async function (req, res) {}
+
+app.get("/api/users/employees/all", rolesMiddleware(["admin"]), async function (req, res) {}
+
+app.get("/api/users/supervisors/all", rolesMiddleware(["admin"]), async function (req, res) {}
+
+app.get("/api/users/hr/all", rolesMiddleware(["admin"]), async function (req, res) {}
+
+app.post("/api/users/create-user", rolesMiddleware(["admin"]), async function (req, res) {}
+
+app.post("/api/users/company/create", rolesMiddleware(["superadmin"]), async function (req, res) {}
+
+app.post("/api/users/create-admin", rolesMiddleware(["superadmin"]), async function (req, res) {}
 
 app.post("/api/users/login", async function (req, res) {
   const { email, password, role } = req.body;
