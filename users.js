@@ -345,7 +345,64 @@ app.post("/api/users/create-user", rolesMiddleware(["admin"]), async function (r
 
 app.post("/api/users/company/create", rolesMiddleware(["superadmin"]), async function (req, res) {}
 
-app.post("/api/users/create-admin", rolesMiddleware(["superadmin"]), async function (req, res) {}
+app.post("/api/users/create-admin", rolesMiddleware(["superadmin"]), async function (req, res) {
+    const { name, email, contactNo, username, password, companyId } = req.body;
+
+  // Validate input data
+  if (
+    typeof name !== "string" ||
+    typeof email !== "string" ||
+    (typeof contactNo !== "string" && typeof contactNo !== "number") ||
+    typeof username !== "string" ||
+    (typeof password !== "string" && typeof password !== "number") ||
+    typeof companyId !== "string"
+  ) {
+    res.status(400).json({ error: "Invalid input data" });
+    return;
+  }
+
+  // Check if the companyId exists in COMPANY_TABLE
+  const companyParams = {
+    TableName: COMPANY_TABLE,
+    Key: {
+      companyId: companyId,
+    },
+  };
+
+  try {
+    const { Item: company } = await dynamoDbClient.send(new GetCommand(companyParams));
+
+    if (!company) {
+      res.status(400).json({ error: "Company not found with the provided companyId" });
+      return;
+    }
+
+    const userId = uuidv4();
+    const hashedPassword = await bcrypt.hash(password.toString(), 10); // Convert password to string before hashing
+
+    // Company found, include companyId and companyName in the admin data
+    const params = {
+      TableName: ADMINS_TABLE,
+      Item: {
+        userId: userId,
+        name: name,
+        email: email,
+        contactNo: contactNo.toString(), // Use contactNo instead of contactno
+        username: username,
+        password: hashedPassword,
+        role: "admin",
+        companyId: companyId,
+        companyName: company.companyName, // Include the company name
+      },
+    };
+
+    await dynamoDbClient.send(new PutCommand(params));
+    res.json({ userId, name, email, contactNo, username, companyId, companyName: company.companyName, role: "admin" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Could not create user" });
+  }
+}
 
 app.post("/api/users/login", async function (req, res) {
   const { email, password, role } = req.body;
