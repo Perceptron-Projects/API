@@ -285,7 +285,39 @@ app.post("/api/users/create-user", rolesMiddleware(["admin"]), async function (r
 });
 
 
-app.post("/api/users/company/create", rolesMiddleware(["superadmin"]), async function (req, res) {}
+app.post("/api/users/company/create", rolesMiddleware(["superadmin"]), async function (req, res) {
+   const { companyName, companyLocation, companyEmail } = req.body;
+
+  // Validate input data
+  if (
+    typeof companyName !== "string" ||
+    typeof companyLocation !== "string" ||
+    typeof companyEmail !== "string"
+  ) {
+    res.status(400).json({ error: "Invalid input data" });
+    return;
+  }
+
+  const companyId = uuidv4(); // Generate a unique companyId
+
+  const params = {
+    TableName: COMPANY_TABLE,
+    Item: {
+      companyId: companyId,
+      companyName: companyName,
+      companyLocation: companyLocation,
+      companyEmail: companyEmail,
+    },
+  };
+
+  try {
+    await dynamoDbClient.send(new PutCommand(params));
+    res.json({ companyId, companyName, companyLocation, companyEmail });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Could not create company" });
+  }
+}
 
 app.post("/api/users/create-admin", rolesMiddleware(["superadmin"]), async function (req, res) {}
 
