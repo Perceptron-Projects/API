@@ -55,7 +55,7 @@ app.get("/api/users/:userId", rolesMiddleware(["admin","hr","employee"]), async 
   } catch (error) {
     console.log(error);
     res.status(500).json({ error: "Could not retrieve user" });
-  }}
+  }});
 
 app.put("/api/users/edit/:userId", rolesMiddleware(["admin"]), async function (req, res) {
   const { name, email, role, username, contactNo, birthday, joinday, permissions } = req.body;
@@ -264,7 +264,7 @@ app.get("/api/users/hr/all", rolesMiddleware(["admin"]), async function (req, re
   } catch (error) {
     console.log(error);
     res.status(500).json({ error: "Could not get HR persons" });
-  }}
+  }});
 
 app.post("/api/users/create-user", rolesMiddleware(["admin"]), async function (req, res) {
    const { name, email, password, role, username, contactNo, birthday, joinday, permissions } = req.body;
@@ -375,7 +375,7 @@ app.post("/api/users/company/create", rolesMiddleware(["superadmin"]), async fun
     console.error(error);
     res.status(500).json({ error: "Could not create company" });
   }
-}
+});
 
 app.post("/api/users/create-admin", rolesMiddleware(["superadmin"]), async function (req, res) {
     const { name, email, contactNo, username, password, companyId } = req.body;
@@ -434,7 +434,7 @@ app.post("/api/users/create-admin", rolesMiddleware(["superadmin"]), async funct
     console.error(error);
     res.status(500).json({ error: "Could not create user" });
   }
-}
+});
 
 app.post("/api/users/login", async function (req, res) {
   const { email, password, role } = req.body;
