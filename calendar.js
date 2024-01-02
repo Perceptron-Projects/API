@@ -171,7 +171,34 @@ app.get("/api/calendar/leaves/all", rolesMiddleware(["admin","hr"]), async funct
   }
 });
         
-app.post("/api/calendar/leaves", rolesMiddleware(["admin","hr","employee"]), async function (req, res) {}
+app.post("/api/calendar/leaves", rolesMiddleware(["admin","hr","employee"]), async function (req, res) {
+  const { day, empId, leaveType } = req.body;
+
+  if (typeof day !== "string") {
+    res.status(400).json({ error: '"day" must be a string' });
+  } else if (typeof empId !== "string") {
+    res.status(400).json({ error: '"empId" must be a string' });
+  } else if (typeof leaveType !== "string") {
+    res.status(400).json({ error: '"leaveType" must be a string' });
+  }
+
+  const params = {
+    TableName: LEAVES_CALENDAR_TABLE,
+    Item: {
+      Day: day,
+      EmployeeId: empId,
+      LeaveType: leaveType,
+    },
+  };
+
+  try {
+    await dynamoDbClient.send(new PutCommand(params));
+    res.json({ day, empId, leaveType });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Could not create leave" });
+  }
+}
 
 
 
