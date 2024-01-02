@@ -37,7 +37,25 @@ app.use((req, res, next) => {
   }
 });
 
-app.get("/api/users/:userId", rolesMiddleware(["admin","hr","employee"]), async function (req, res) {}
+app.get("/api/users/:userId", rolesMiddleware(["admin","hr","employee"]), async function (req, res) { const params = {
+    TableName: EMPLOYEES_TABLE,
+    Key: {
+      userId: req.params.userId,
+    },
+  };
+
+  try {
+    const { Item } = await dynamoDbClient.send(new GetCommand(params));
+    if (Item) {
+      const { userId, name, email, role } = Item;
+      res.json({ userId, name, email, role });
+    } else {
+      res.status(404).json({ error: 'Could not find user with provided "userId"' });
+    }
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({ error: "Could not retrieve user" });
+  }}
 
 app.put("/api/users/edit/:userId", rolesMiddleware(["admin"]), async function (req, res) {
   const { name, email, role, username, contactNo, birthday, joinday, permissions } = req.body;
@@ -206,7 +224,47 @@ app.get("/api/users/supervisors/all", rolesMiddleware(["admin"]), async function
   }
 });
 
-app.get("/api/users/hr/all", rolesMiddleware(["admin"]), async function (req, res) {}
+app.get("/api/users/hr/all", rolesMiddleware(["admin"]), async function (req, res) { try {
+    const adminUserId = req.user.userId;
+
+    // Retrieve the admin's company information from the database
+    const adminParams = {
+      TableName: ADMINS_TABLE,
+      Key: {
+        userId: adminUserId,
+      },
+    };
+
+    const { Item: admin } = await dynamoDbClient.send(new GetCommand(adminParams));
+
+    if (!admin || !admin.companyId) {
+      res.status(400).json({ error: "Admin information not found or missing companyId" });
+      return;
+    }
+
+    // Retrieve all HR persons for the admin's company
+    const hrParams = {
+      TableName: EMPLOYEES_TABLE,
+      FilterExpression: "#companyId = :companyId AND #role = :role",
+      ExpressionAttributeNames: {
+        "#companyId": "companyId",
+        "#role": "role",
+      },
+      ExpressionAttributeValues: {
+        ":companyId": admin.companyId,
+        ":role": "hr",
+      },
+    };
+
+
+    
+    const { Items: hrPersons } = await dynamoDbClient.send(new ScanCommand(hrParams));
+    
+    res.json(hrPersons);
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({ error: "Could not get HR persons" });
+  }}
 
 app.post("/api/users/create-user", rolesMiddleware(["admin"]), async function (req, res) {
    const { name, email, password, role, username, contactNo, birthday, joinday, permissions } = req.body;
