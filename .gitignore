@@ -1,0 +1,39 @@
+# Node.js
+node_modules/
+
+# Serverless
+.serverless/
+.serverless-debug/
+
+# Local development files
+# .env
+# .env.local
+# .env.*.local
+
+# Serverless plugins cache
+.serverless_plugins/
+
+# AWS Lambda deployment artifacts
+.deploy/
+
+# IDE settings
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# Linux
+*~
+
+# Dependency files
+package-lock.json
+yarn.lock
