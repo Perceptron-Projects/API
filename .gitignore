@@ -6,9 +6,9 @@ node_modules/
 .serverless-debug/
 
 # Local development files
-.env
-.env.local
-.env.*.local
+# .env
+# .env.local
+# .env.*.local
 
 # Serverless plugins cache
 .serverless_plugins/
