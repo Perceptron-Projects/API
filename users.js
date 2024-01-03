@@ -456,7 +456,7 @@ app.post("/api/users/login", async function (req, res) {
     user = Items[0];
   } catch (error) {
     console.log(error);
-    res.status(500).json({ error: "Could not get users" });
+    return res.status(500).json({ error: "Could not get users" });
   }
 
   if (!user || !(await bcrypt.compare(password, user.password))) {
@@ -464,8 +464,23 @@ app.post("/api/users/login", async function (req, res) {
   }
 
   console.log(user);
-  const token = jwt.sign({ userId: user.userId, role: user.role }, JWT_SECRET);
-  res.json({ token, role: user.role });
+
+  // Set the expiration time for the token (e.g., 1 hour from now) in milliseconds
+  const expiresInMilliseconds = 3600 * 1000; // 1 hour in milliseconds
+  const expirationTime = Date.now() + expiresInMilliseconds;
+
+  const token = jwt.sign({
+    userId: user.userId,
+    role: user.role,
+    exp: expirationTime, // Set the expiration time in the payload
+  }, JWT_SECRET);
+
+  res.json({
+    token,
+    role: user.role,
+    userId: user.userId,
+    expiresIn: expiresInMilliseconds, // Include the expiration time in the response
+  });
 });
 
 
