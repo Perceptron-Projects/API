@@ -14,6 +14,7 @@ const { v4: uuidv4 } = require("uuid");
 const jwt = require("jsonwebtoken");
 const { authenticateToken } = require("./middlewares/authMiddleware");
 const { rolesMiddleware } = require("./middlewares/rolesMiddleware");
+const errors = require('./errors');
 
 const app = express();
 
@@ -50,11 +51,11 @@ app.get("/api/users/:userId", rolesMiddleware(["admin","hr","employee"]), async 
       const { userId, name, email, role } = Item;
       res.json({ userId, name, email, role });
     } else {
-      res.status(404).json({ error: 'Could not find user with provided "userId"' });
+      res.status(404).json({ error: errors.userNotFound });
     }
   } catch (error) {
     console.log(error);
-    res.status(500).json({ error: "Could not retrieve user" });
+    res.status(500).json({ error: errors.getUsersError });
   }});
 
 app.put("/api/users/edit/:userId", rolesMiddleware(["admin"]), async function (req, res) {
@@ -72,7 +73,7 @@ app.put("/api/users/edit/:userId", rolesMiddleware(["admin"]), async function (r
     typeof joinday !== "string" ||
     !Array.isArray(permissions)
   ) {
-    res.status(400).json({ error: "Invalid input data" });
+    res.status(400).json({ error: errors.invalidInputData });
     return;
   }
 
@@ -88,7 +89,7 @@ app.put("/api/users/edit/:userId", rolesMiddleware(["admin"]), async function (r
     const { Item: user } = await dynamoDbClient.send(new GetCommand(userParams));
 
     if (!user) {
-      res.status(400).json({ error: "User not found with the provided userId" });
+      res.status(400).json({ error: errors.userNotFound });
       return;
     }
 
@@ -136,7 +137,7 @@ app.put("/api/users/edit/:userId", rolesMiddleware(["admin"]), async function (r
     });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: "Could not update user" });
+    res.status(500).json({ error: errors.updateUserError });
   }
 });
 
@@ -155,7 +156,7 @@ app.get("/api/users/employees/all", rolesMiddleware(["admin"]), async function (
     const { Item: admin } = await dynamoDbClient.send(new GetCommand(adminParams));
 
     if (!admin || !admin.companyId) {
-      res.status(400).json({ error: "Admin information not found or missing companyId" });
+      res.status(400).json({ error: errors.adminCompanyInfoNotFound });
       return;
     }
 
@@ -178,7 +179,7 @@ app.get("/api/users/employees/all", rolesMiddleware(["admin"]), async function (
     res.json(employeePersons);
   } catch (error) {
     console.log(error);
-    res.status(500).json({ error: "Could not get employee persons" });
+    res.status(500).json({ error: errors.getEmployeePersonsError });
   }
 });
 
@@ -197,7 +198,7 @@ app.get("/api/users/supervisors/all", rolesMiddleware(["admin"]), async function
     const { Item: admin } = await dynamoDbClient.send(new GetCommand(adminParams));
 
     if (!admin || !admin.companyId) {
-      res.status(400).json({ error: "Admin information not found or missing companyId" });
+      res.status(400).json({ error: errors.adminCompanyInfoNotFound });
       return;
     }
 
@@ -220,7 +221,7 @@ app.get("/api/users/supervisors/all", rolesMiddleware(["admin"]), async function
     res.json(supervisorPersons);
   } catch (error) {
     console.log(error);
-    res.status(500).json({ error: "Could not get supervisor persons" });
+    res.status(500).json({ error: errors.getSupervisorPersonsError });
   }
 });
 
@@ -238,7 +239,7 @@ app.get("/api/users/hr/all", rolesMiddleware(["admin"]), async function (req, re
     const { Item: admin } = await dynamoDbClient.send(new GetCommand(adminParams));
 
     if (!admin || !admin.companyId) {
-      res.status(400).json({ error: "Admin information not found or missing companyId" });
+      res.status(400).json({ error: errors.adminCompanyInfoNotFound });
       return;
     }
 
@@ -263,7 +264,7 @@ app.get("/api/users/hr/all", rolesMiddleware(["admin"]), async function (req, re
     res.json(hrPersons);
   } catch (error) {
     console.log(error);
-    res.status(500).json({ error: "Could not get HR persons" });
+    res.status(500).json({ error: errors.getHRPersonsError });
   }});
 
 app.post("/api/users/create-user", rolesMiddleware(["admin"]), async function (req, res) {
@@ -281,7 +282,7 @@ app.post("/api/users/create-user", rolesMiddleware(["admin"]), async function (r
     typeof joinday !== "string" ||
     !Array.isArray(permissions)
   ) {
-    res.status(400).json({ error: "Invalid input data" });
+    res.status(400).json({ error: errors.invalidInputData });
     return;
   }
 
@@ -299,7 +300,7 @@ app.post("/api/users/create-user", rolesMiddleware(["admin"]), async function (r
     const { Item: admin } = await dynamoDbClient.send(new GetCommand(adminParams));
 
     if (!admin || !admin.companyId) {
-      res.status(400).json({ error: "Admin information not found or missing companyId" });
+      res.status(400).json({ error: errors.adminCompanyInfoNotFound });
       return;
     }
 
@@ -338,7 +339,7 @@ app.post("/api/users/create-user", rolesMiddleware(["admin"]), async function (r
     });
   } catch (error) {
     console.log(error);
-    res.status(500).json({ error: "Could not create user" });
+    res.status(500).json({ error: errors.createUserError});
   }
 });
 
@@ -352,7 +353,7 @@ app.post("/api/users/company/create", rolesMiddleware(["superadmin"]), async fun
     typeof companyLocation !== "string" ||
     typeof companyEmail !== "string"
   ) {
-    res.status(400).json({ error: "Invalid input data" });
+    res.status(400).json({ error: errors.invalidInputData });
     return;
   }
 
@@ -373,7 +374,7 @@ app.post("/api/users/company/create", rolesMiddleware(["superadmin"]), async fun
     res.json({ companyId, companyName, companyLocation, companyEmail });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: "Could not create company" });
+    res.status(500).json({ error: errors.createCompanyError });
   }
 });
 
@@ -389,7 +390,7 @@ app.post("/api/users/create-admin", rolesMiddleware(["superadmin"]), async funct
     (typeof password !== "string" && typeof password !== "number") ||
     typeof companyId !== "string"
   ) {
-    res.status(400).json({ error: "Invalid input data" });
+    res.status(400).json({ error: errors.invalidInputData });
     return;
   }
 
@@ -405,7 +406,7 @@ app.post("/api/users/create-admin", rolesMiddleware(["superadmin"]), async funct
     const { Item: company } = await dynamoDbClient.send(new GetCommand(companyParams));
 
     if (!company) {
-      res.status(400).json({ error: "Company not found with the provided companyId" });
+      res.status(400).json({ error: errors.companyNotFound });
       return;
     }
 
@@ -432,7 +433,7 @@ app.post("/api/users/create-admin", rolesMiddleware(["superadmin"]), async funct
     res.json({ userId, name, email, contactNo, username, companyId, companyName: company.companyName, role: "admin" });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: "Could not create user" });
+    res.status(500).json({ error: errors.createUserError });
   }
 });
 
@@ -456,11 +457,11 @@ app.post("/api/users/login", async function (req, res) {
     user = Items[0];
   } catch (error) {
     console.log(error);
-    return res.status(500).json({ error: "Could not get users" });
+    return res.status(500).json({ error: errors.getUsersError});
   }
 
   if (!user || !(await bcrypt.compare(password, user.password))) {
-    return res.status(401).json({ error: "Invalid email or password." });
+    return res.status(401).json({ error: errors.invalidCredentials });
   }
 
   console.log(user);

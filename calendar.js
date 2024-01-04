@@ -12,6 +12,7 @@ const express = require("express");
 const serverless = require("serverless-http");
 const { authenticateToken } = require("./middlewares/authMiddleware");
 const { rolesMiddleware } = require("./middlewares/rolesMiddleware");
+const errors = require('./errors');
 
 
 const app = express();
@@ -75,12 +76,12 @@ app.get("/api/calendar/leaves/:day/:employeeId", rolesMiddleware(["admin","hr","
       res
         .status(404)
         .json({
-          error: "Could not find leave for the provided day and employeeId",
+          error: errors.leaveNotFound,
         });
     }
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: "Could not retrieve leave" });
+    res.status(500).json({ error: errors.retrieveLeaveError });
   }
 });
 
@@ -106,12 +107,12 @@ app.get("/api/calendar/holidays/:day", rolesMiddleware(["admin","hr","employee"]
       } else {
         res
           .status(404)
-          .json({ error: "Could not find holiday for the provided day" });
+          .json({ error:errors.holidayNotFound});
       }
     }
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: "Could not retrieve holiday" });
+    res.status(500).json({ error: errors.retrieveHolidayError });
   }
 });
 
@@ -136,7 +137,7 @@ app.post("/api/calendar/holidays", rolesMiddleware(["admin","hr"]), async functi
     res.json({ day, desc });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: "Could not create holiday" });
+    res.status(500).json({ error: errors.createHolidayError});
   }
 });
 
@@ -158,7 +159,7 @@ app.get("/api/calendar/holidays", rolesMiddleware(["admin","hr","employee"]), as
     res.json(formattedItems);
   } catch (error) {
       console.log(error);
-      res.status(500).json({ error: "Could not retrieve all holidays" });
+      res.status(500).json({ error: errors.retrieveAllHolidaysError });
   }
 });
         
@@ -189,12 +190,12 @@ app.get("/api/calendar/leaves/:day/:employeeId", rolesMiddleware(["admin","hr","
       res
         .status(404)
         .json({
-          error: "Could not find leave for the provided day and employeeId",
+          error: errors.leaveNotFound,
         });
     }
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: "Could not retrieve leave" });
+    res.status(500).json({ error: errors.retrieveLeaveError });
   }
 });
         
@@ -217,11 +218,11 @@ app.get("/api/calendar/leaves/all", rolesMiddleware(["admin","hr"]), async funct
 
       res.json(formattedItems);
       } else {
-          res.status(404).json({ error: "No leaves found" });
+          res.status(404).json({ error: errors.noLeavesFound });
       }
   } catch (error) {
       console.error(error);
-      res.status(500).json({ error: "Could not retrieve all leaves" });
+      res.status(500).json({ error: errors.retrieveAllLeavesError });
   }
 });
         
@@ -250,7 +251,7 @@ app.post("/api/calendar/leaves", rolesMiddleware(["admin","hr","employee"]), asy
     res.json({ day, empId, leaveType });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: "Could not create leave" });
+    res.status(500).json({ error: errors.createLeaveError });
   }
 });
 
