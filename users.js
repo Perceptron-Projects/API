@@ -438,51 +438,59 @@ app.post("/api/users/create-admin", rolesMiddleware(["superadmin"]), async funct
 });
 
 app.post("/api/users/login", async function (req, res) {
-  const { email, password, role } = req.body;
+  const { email, password } = req.body;
 
-  const tableName = role === "admin" || role === "superadmin" ? ADMINS_TABLE : EMPLOYEES_TABLE;
-
-  const params = {
-    TableName: tableName,
+  const paramsAdmins = {
+    TableName: ADMINS_TABLE,
     FilterExpression: "email = :email",
     ExpressionAttributeValues: {
       ":email": email,
     },
   };
 
-  let user;
+  const paramsEmployees = {
+    TableName: EMPLOYEES_TABLE,
+    FilterExpression: "email = :email",
+    ExpressionAttributeValues: {
+      ":email": email,
+    },
+  };
+
   try {
-    const { Items } = await dynamoDbClient.send(new ScanCommand(params));
-    console.log(Items);
-    user = Items[0];
+    const { Items: adminItems } = await dynamoDbClient.send(new ScanCommand(paramsAdmins));
+    const { Items: employeeItems } = await dynamoDbClient.send(new ScanCommand(paramsEmployees));
+
+    const user = adminItems[0] || employeeItems[0];
+
+    if (!user || !(await bcrypt.compare(password, user.password))) {
+      return res.status(401).json({ error: errors.invalidCredentials });
+    }
+
+    console.log(user);
+
+    // Set the expiration time for the token (e.g., 1 hour from now) in milliseconds
+    const expiresInMilliseconds = 3600 * 1000; // 1 hour in milliseconds
+    const expirationTime = Date.now() + expiresInMilliseconds;
+
+    const token = jwt.sign({
+      userId: user.userId,
+      role: user.role,
+      exp: expirationTime, // Set the expiration time in the payload
+    }, JWT_SECRET);
+
+    res.json({
+      token,
+      role: user.role,
+      userId: user.userId,
+      expiresIn: expiresInMilliseconds, // Include the expiration time in the response
+    });
+
   } catch (error) {
     console.log(error);
-    return res.status(500).json({ error: errors.getUsersError});
+    return res.status(500).json({ error: errors.getUsersError });
   }
-
-  if (!user || !(await bcrypt.compare(password, user.password))) {
-    return res.status(401).json({ error: errors.invalidCredentials });
-  }
-
-  console.log(user);
-
-  // Set the expiration time for the token (e.g., 1 hour from now) in milliseconds
-  const expiresInMilliseconds = 3600 * 1000; // 1 hour in milliseconds
-  const expirationTime = Date.now() + expiresInMilliseconds;
-
-  const token = jwt.sign({
-    userId: user.userId,
-    role: user.role,
-    exp: expirationTime, // Set the expiration time in the payload
-  }, JWT_SECRET);
-
-  res.json({
-    token,
-    role: user.role,
-    userId: user.userId,
-    expiresIn: expiresInMilliseconds, // Include the expiration time in the response
-  });
 });
+
 
 
 module.exports.handler = serverless(app);
