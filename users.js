@@ -293,6 +293,47 @@ app.get("/api/users/admins/all", rolesMiddleware(["superadmin"]), async function
   }
 });
 
+app.get("/api/users/admins/:id", rolesMiddleware(["superadmin"]), async function (req, res) {
+  try {
+    const adminId = req.params.id;
+    const adminParams = {
+      TableName: ADMINS_TABLE,
+      Key: {
+        userId: adminId,
+      },
+    };
+
+    const { Item: admin } = await dynamoDbClient.send(new GetCommand(adminParams));
+
+
+  
+    res.json(admin);
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({ error: "Error fetching admin by ID" });
+  }
+});
+
+app.get("/api/users/company/:id", rolesMiddleware(["superadmin"]), async function (req, res) {
+  try {
+    const companyId = req.params.id;
+    const companyParams = {
+      TableName: COMPANY_TABLE,
+      Key: {
+        companyId: companyId,
+      },
+    };
+
+    const { Item: company } = await dynamoDbClient.send(new GetCommand(companyParams));
+
+    res.json(company);
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({ error: "Error fetching company by ID" });
+  }
+}
+);
+
 app.get("/api/users/companies/all", rolesMiddleware(["superadmin"]), async function (req, res) {
   
 
@@ -508,6 +549,172 @@ app.post("/api/users/create-admin", rolesMiddleware(["superadmin"]), async funct
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: errors.createUserError });
+  }
+});
+app.patch("/api/users/admins/:id", rolesMiddleware(["superadmin"]), async function (req, res) {
+  try {
+    const adminId = req.params.id;
+    const { name, email, contactNo, username, companyId, companyName } = req.body;
+
+    // Validate input data
+    if (
+      typeof name !== "string" ||
+      typeof email !== "string" ||
+      (typeof contactNo !== "string" && typeof contactNo !== "number") ||
+      typeof username !== "string" ||
+      typeof companyId !== "string"||
+      typeof companyName !== "string"
+    ) {
+      res.status(400).json({ error: errors.invalidInputData });
+      return;
+    }
+
+    let imageUrl = '';
+
+    if (req.body.image) {
+      try {
+        const uploadResult = await uploadImage(req.body.image);
+        imageUrl = uploadResult.imageUrl;
+      } catch (error) {
+        console.error("Error:", error);
+        res.status(500).json({ error: "Image upload failed" });
+        return;
+      }
+    }
+
+    // Check if the admin exists
+    const adminParams = {
+      TableName: ADMINS_TABLE,
+      Key: {
+        userId: adminId,
+      },
+    };
+
+    const { Item: existingAdmin } = await dynamoDbClient.send(new GetCommand(adminParams));
+
+    if (!existingAdmin) {
+      res.status(404).json({ error: "Admin not found" });
+      return;
+    }
+
+    // Update admin data
+    const updatedAdmin = {
+      ...existingAdmin,
+      name: name || existingAdmin.name,
+      email: email  || existingAdmin.email,
+      contactNo: contactNo.toString() || existingAdmin.contactNo,
+      username: username || existingAdmin.username,
+      companyId: companyId || existingAdmin.companyId,
+      companyName: companyName  || existingAdmin.companyName,
+      adminImageUrl: imageUrl || existingAdmin.adminImageUrl,
+    };
+
+    const updateParams = {
+      TableName: ADMINS_TABLE,
+      Key: {
+        userId: adminId,
+      },
+      UpdateExpression: "SET #name = :name, email = :email, contactNo = :contactNo, username = :username, companyId = :companyId, companyName = :companyName, adminImageUrl = :adminImageUrl",
+      ExpressionAttributeNames: {
+        "#name": "name",
+      },
+      ExpressionAttributeValues: {
+        ":name": updatedAdmin.name,
+        ":email": updatedAdmin.email,
+        ":contactNo": updatedAdmin.contactNo,
+        ":username": updatedAdmin.username,
+        ":companyId": updatedAdmin.companyId,
+        ":companyName": updatedAdmin.companyName,
+        ":adminImageUrl": updatedAdmin.adminImageUrl,
+      },
+      ReturnValues: "ALL_NEW",
+    };
+
+    const { Attributes: updatedAttributes } = await dynamoDbClient.send(new UpdateCommand(updateParams));
+
+    res.json(updatedAttributes);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Error updating admin" });
+  }
+});
+
+app.patch("/api/users/company/:id", rolesMiddleware(["superadmin"]), async function (req, res) {
+  try {
+    const companyId = req.params.id;
+    const { companyName, companyLocation, companyEmail, contactNo } = req.body;
+
+    // Validate input data
+    if (
+      typeof companyName !== "string" ||
+      typeof companyLocation !== "string" ||
+      typeof companyEmail !== "string" ||
+      typeof contactNo !== "string"
+    ) {
+      res.status(400).json({ error: errors.invalidInputData });
+      return;
+    }
+
+    let imageUrl = '';
+
+    if (req.body.image) {
+      try {
+        const uploadResult = await uploadImage(req.body.image);
+        imageUrl = uploadResult.imageUrl;
+      } catch (error) {
+        console.error("Error:", error);
+        res.status(500).json({ error: "Image upload failed" });
+        return;
+      }
+    }
+
+    // Check if the company exists
+    const companyParams = {
+      TableName: COMPANY_TABLE,
+      Key: {
+        companyId: companyId,
+      },
+    };
+
+    const { Item: existingCompany } = await dynamoDbClient.send(new GetCommand(companyParams));
+
+    if (!existingCompany) {
+      res.status(404).json({ error: "Company not found" });
+      return;
+    }
+
+    // Update company data
+    const updatedCompany = {
+      ...existingCompany,
+      companyName: companyName || existingCompany.companyName,
+      companyLocation: companyLocation || existingCompany.companyLocation,
+      companyEmail: companyEmail || existingCompany.companyEmail,
+      contactNo: contactNo || existingCompany.contactNo,
+      companyImageUrl: imageUrl || existingCompany.companyImageUrl,
+    };
+
+    const updateParams = {
+      TableName: COMPANY_TABLE,
+      Key: {
+        companyId: companyId,
+      },
+      UpdateExpression: "SET companyName = :companyName, companyLocation = :companyLocation, companyEmail = :companyEmail, contactNo = :contactNo, companyImageUrl = :companyImageUrl",
+      ExpressionAttributeValues: {
+        ":companyName": updatedCompany.companyName,
+        ":companyLocation": updatedCompany.companyLocation,
+        ":companyEmail": updatedCompany.companyEmail,
+        ":contactNo": updatedCompany.contactNo,
+        ":companyImageUrl": updatedCompany.companyImageUrl,
+      },
+      ReturnValues: "ALL_NEW",
+    };
+
+    const { Attributes: updatedAttributes } = await dynamoDbClient.send(new UpdateCommand(updateParams));
+
+    res.json(updatedAttributes);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Error updating company" });
   }
 });
 
