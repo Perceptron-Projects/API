@@ -1,4 +1,30 @@
 ## Users Endpoints (`users.js`)
+ ### Super admin creation dynamodb manually
+```json
+{
+"userId": {
+"S": "123"
+},
+"contactNo": {
+"S": "+1234567890"
+},
+"email": {
+"S": "superadmin@gmail.com"
+},
+"password": {
+"S": "$2a$10$mWe1pQCb8kISB.D17laXmOVY.8OyyVLEM71qls3/zMgA5tQmgGzr."
+},
+"role": {
+"L": [
+{"S": "superadmin"}
+]
+},
+"username": {
+"S": "superadmin"
+}
+}
+
+```
 
 ### 1. Login
 - **Endpoint:** `POST /api/users/login`
