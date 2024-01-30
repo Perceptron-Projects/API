@@ -428,141 +428,170 @@ app.post("/api/users/create-user", rolesMiddleware(["admin"]), async function (r
 });
 
 app.post("/api/users/company/create", rolesMiddleware(["superadmin"]), async function (req, res) {
-  const { companyName, companyLocation, companyEmail, contactNo } = req.body;
+  const { companyName, email, contactNo, longitude, latitude } = req.body;
 
- // Validate input data
- if (
-   typeof companyName !== "string" ||
-   typeof companyLocation !== "string" ||
-   typeof companyEmail !== "string"||
-   typeof contactNo !== "string"
- ) {
-   res.status(400).json({ error: errors.invalidInputData });
-   return;
- }
-
- let imageUrl = '';
- if(req.body.image){
-   try {
-     // Await the result of the uploadImage function
-     const uploadResult = await uploadImage(req.body.image);
-     imageUrl = uploadResult.imageUrl;
-   } catch (error) {
-     console.error("Error:", error);
-     res.status(500).json({ error: "Image upload failed" });
-     return;
-   }
- }
-
- const companyId = uuidv4(); // Generate a unique companyId
-
- const params = {
-   TableName: COMPANY_TABLE,
-   Item: {
-     companyId: companyId,
-     companyName: companyName,
-     companyLocation: companyLocation,
-     companyEmail: companyEmail,
-     contactNo: contactNo,
-     companyImageUrl: imageUrl,
-   },
- };
-
- try {
-   await dynamoDbClient.send(new PutCommand(params));
-   res.json({ companyId, companyName, companyLocation, companyEmail, contactNo, companyImageUrl: imageUrl });
- } catch (error) {
-   console.error(error);
-   res.status(500).json({ error: errors.createCompanyError });
- }
+  // Validate input data
+  if (
+    typeof companyName !== "string" ||
+    typeof email !== "string" ||
+    typeof contactNo !== "string" ||
+    typeof longitude !== "string" ||
+    typeof latitude !== "string"
+  ) {
+    res.status(400).json({ error: errors.invalidInputData });
+    return;
+  }
+  
+  let imageUrl = '';
+  if (req.body.image) {
+    try {
+      // Await the result of the uploadImage function
+      const uploadResult = await uploadImage(req.body.image);
+      imageUrl = uploadResult.imageUrl;
+    } catch (error) {
+      console.error("Error:", error);
+      res.status(500).json({ error: "Image upload failed" });
+      return;
+    }
+  }
+  
+  const companyId = uuidv4(); // Generate a unique companyId
+  
+  const params = {
+    TableName: COMPANY_TABLE,
+    Item: {
+      companyId: companyId,
+      companyName: companyName,
+      location: {
+        longitude: longitude,
+        latitude: latitude,
+      },
+      companyEmail: email,
+      contactNo: contactNo,
+      companyImageUrl: imageUrl || "https://media.istockphoto.com/id/908578348/vector/business-building-illustration.jpg?s=612x612&w=0&k=20&c=thg6Bom79dCRo8pMV3fo7p-8b7m1p-EdLZZPKYpXYvg=",
+    },
+  };
+  
+  try {
+    await dynamoDbClient.send(new PutCommand(params));
+    res.json({
+      companyId,
+      companyName,
+      location: {
+        longitude,
+        latitude,
+      },
+      companyEmail: email,
+      contactNo,
+      companyImageUrl: imageUrl,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: errors.createCompanyError });
+  }
+  
 });
 
 app.post("/api/users/create-admin", rolesMiddleware(["superadmin"]), async function (req, res) {
+  const { firstName, lastName, companyData, email, contactNo } = req.body;
+
+  // Validate input data
+  if (
+    typeof firstName !== "string" ||
+    typeof lastName !== "string" ||
+    typeof email !== "string" ||
+    (typeof contactNo !== "string" && typeof contactNo !== "number") ||
+    typeof companyData !== "object"
+  ) {
+    res.status(400).json({ error: errors.invalidInputData });
+    return;
+  }
+
+  let imageUrl = '';
+
+  if (req.body.image) {
+    try {
+      // Await the result of the uploadImage function
+      const uploadResult = await uploadImage(req.body.image);
+      console.log(uploadResult);
+      imageUrl = uploadResult.imageUrl;
+    } catch (error) {
+      console.error("Error:", error);
+      res.status(500).json({ error: "Image upload failed" });
+      return;
+    }
+  }
+
+  // Extract company data
+  const { companyId, companyName } = companyData;
+
+  // Check if the companyId exists in COMPANY_TABLE
+  const companyParams = {
+    TableName: COMPANY_TABLE,
+    Key: {
+      companyId: companyId,
+    },
+  };
+
+  const { Item: company } = await dynamoDbClient.send(new GetCommand(companyParams));
+
+  if (!company) {
+    res.status(400).json({ error: errors.companyNotFound });
+    return;
+  }
+
+  const userId = uuidv4();
+
+  const password = bcrypt.hashSync("admin123", 10);
+
+  // Company found, include companyId and companyName in the admin data
+  const params = {
+    TableName: ADMINS_TABLE,
+    Item: {
+      userId: userId,
+      firstName: firstName,
+      lastName: lastName,
+      email: email,
+      contactNo: contactNo.toString(),
+      role: "admin",
+      companyId: companyId,
+      companyName: companyName,
+      password: password,
+      adminImageUrl: imageUrl || "https://www.svgrepo.com/show/384674/account-avatar-profile-user-11.svg",
+    },
+  };
+
   try {
-    const { name, email, contactNo, username, password, companyId } = req.body;
-
-    // Validate input data
-    if (
-      typeof name !== "string" ||
-      typeof email !== "string" ||
-      (typeof contactNo !== "string" && typeof contactNo !== "number") ||
-      typeof username !== "string" ||
-      (typeof password !== "string" && typeof password !== "number") ||
-      typeof companyId !== "string"
-    ) {
-      res.status(400).json({ error: errors.invalidInputData });
-      return;
-    }
-
-    let imageUrl = '';
-
-    if (req.body.image) {
-      try {
-        // Await the result of the uploadImage function
-        const uploadResult = await uploadImage(req.body.image);
-        console.log(uploadResult);
-        imageUrl = uploadResult.imageUrl;
-      } catch (error) {
-        console.error("Error:", error);
-        res.status(500).json({ error: "Image upload failed" });
-        return;
-      }
-    }
-
-    // Check if the companyId exists in COMPANY_TABLE
-    const companyParams = {
-      TableName: COMPANY_TABLE,
-      Key: {
-        companyId: companyId,
-      },
-    };
-
-    const { Item: company } = await dynamoDbClient.send(new GetCommand(companyParams));
-
-    if (!company) {
-      res.status(400).json({ error: errors.companyNotFound });
-      return;
-    }
-
-    const userId = uuidv4();
-    const hashedPassword = await bcrypt.hash(password.toString(), 10); // Convert password to string before hashing
-
-    // Company found, include companyId and companyName in the admin data
-    const params = {
-      TableName: ADMINS_TABLE,
-      Item: {
-        userId: userId,
-        name: name,
-        email: email,
-        contactNo: contactNo.toString(), // Use contactNo instead of contactno
-        username: username,
-        password: hashedPassword,
-        role: "admin",
-        companyId: companyId,
-        companyName: company.companyName, // Include the company name
-        adminImageUrl: imageUrl,
-      },
-    };
-
     await dynamoDbClient.send(new PutCommand(params));
-    res.json({ userId, name, email, contactNo, username, companyId, companyName: company.companyName, role: "admin", adminImageUrl: imageUrl });
+    res.json({
+      userId,
+      firstName,
+      lastName,
+      email,
+      contactNo,
+      companyId,
+      companyName,
+      role: "admin",
+      adminImageUrl: imageUrl,
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: errors.createUserError });
   }
 });
+
 app.patch("/api/users/admins/:id", rolesMiddleware(["superadmin"]), async function (req, res) {
   try {
     const adminId = req.params.id;
-    const { name, email, contactNo, username, companyId, companyName } = req.body;
-
+    const { firstName, lastName, email, contactNo, username, companyId, companyName } = req.body;
     // Validate input data
     if (
-      typeof name !== "string" ||
+      typeof firstName !== "string" ||
+      typeof lastName !== "string" ||
       typeof email !== "string" ||
       (typeof contactNo !== "string" && typeof contactNo !== "number") ||
       typeof username !== "string" ||
-      typeof companyId !== "string"||
+      typeof companyId !== "string" ||
       typeof companyName !== "string"
     ) {
       res.status(400).json({ error: errors.invalidInputData });
@@ -573,6 +602,7 @@ app.patch("/api/users/admins/:id", rolesMiddleware(["superadmin"]), async functi
 
     if (req.body.image) {
       try {
+        // If image is provided, upload it
         const uploadResult = await uploadImage(req.body.image);
         imageUrl = uploadResult.imageUrl;
       } catch (error) {
@@ -600,13 +630,14 @@ app.patch("/api/users/admins/:id", rolesMiddleware(["superadmin"]), async functi
     // Update admin data
     const updatedAdmin = {
       ...existingAdmin,
-      name: name || existingAdmin.name,
-      email: email  || existingAdmin.email,
+      firstName: firstName || existingAdmin.firstName,
+      lastName: lastName || existingAdmin.lastName,
+      email: email || existingAdmin.email,
       contactNo: contactNo.toString() || existingAdmin.contactNo,
       username: username || existingAdmin.username,
       companyId: companyId || existingAdmin.companyId,
-      companyName: companyName  || existingAdmin.companyName,
-      adminImageUrl: imageUrl || existingAdmin.adminImageUrl,
+      companyName: companyName || existingAdmin.companyName,
+      adminImageUrl: imageUrl || existingAdmin.adminImageUrl || "https://www.svgrepo.com/show/384674/account-avatar-profile-user-11.svg",
     };
 
     const updateParams = {
@@ -614,12 +645,10 @@ app.patch("/api/users/admins/:id", rolesMiddleware(["superadmin"]), async functi
       Key: {
         userId: adminId,
       },
-      UpdateExpression: "SET #name = :name, email = :email, contactNo = :contactNo, username = :username, companyId = :companyId, companyName = :companyName, adminImageUrl = :adminImageUrl",
-      ExpressionAttributeNames: {
-        "#name": "name",
-      },
+      UpdateExpression: "SET firstName = :firstName, lastName = :lastName, email = :email, contactNo = :contactNo, username = :username, companyId = :companyId, companyName = :companyName, adminImageUrl = :adminImageUrl",
       ExpressionAttributeValues: {
-        ":name": updatedAdmin.name,
+        ":firstName": updatedAdmin.firstName,
+        ":lastName": updatedAdmin.lastName,
         ":email": updatedAdmin.email,
         ":contactNo": updatedAdmin.contactNo,
         ":username": updatedAdmin.username,
@@ -642,21 +671,21 @@ app.patch("/api/users/admins/:id", rolesMiddleware(["superadmin"]), async functi
 app.patch("/api/users/company/:id", rolesMiddleware(["superadmin"]), async function (req, res) {
   try {
     const companyId = req.params.id;
-    const { companyName, companyLocation, companyEmail, contactNo } = req.body;
+    const { companyName, latitude, email, contactNo, longitude } = req.body;
 
     // Validate input data
     if (
       typeof companyName !== "string" ||
-      typeof companyLocation !== "string" ||
-      typeof companyEmail !== "string" ||
-      typeof contactNo !== "string"
+      typeof latitude !== "string" ||
+      typeof email !== "string" ||
+      typeof contactNo !== "string" ||
+      typeof longitude !== "string"
     ) {
       res.status(400).json({ error: errors.invalidInputData });
       return;
     }
 
     let imageUrl = '';
-
     if (req.body.image) {
       try {
         const uploadResult = await uploadImage(req.body.image);
@@ -687,10 +716,11 @@ app.patch("/api/users/company/:id", rolesMiddleware(["superadmin"]), async funct
     const updatedCompany = {
       ...existingCompany,
       companyName: companyName || existingCompany.companyName,
-      companyLocation: companyLocation || existingCompany.companyLocation,
-      companyEmail: companyEmail || existingCompany.companyEmail,
+      latitude: latitude || existingCompany.latitude,
+      email: email || existingCompany.email,
       contactNo: contactNo || existingCompany.contactNo,
-      companyImageUrl: imageUrl || existingCompany.companyImageUrl,
+      longitude: longitude || existingCompany.longitude,
+      companyImageUrl: imageUrl || existingCompany.companyImageUrl || "https://media.istockphoto.com/id/908578348/vector/business-building-illustration.jpg?s=612x612&w=0&k=20&c=thg6Bom79dCRo8pMV3fo7p-8b7m1p-EdLZZPKYpXYvg=",
     };
 
     const updateParams = {
@@ -698,12 +728,13 @@ app.patch("/api/users/company/:id", rolesMiddleware(["superadmin"]), async funct
       Key: {
         companyId: companyId,
       },
-      UpdateExpression: "SET companyName = :companyName, companyLocation = :companyLocation, companyEmail = :companyEmail, contactNo = :contactNo, companyImageUrl = :companyImageUrl",
+      UpdateExpression: "SET companyName = :companyName, latitude = :latitude, email = :email, contactNo = :contactNo, longitude = :longitude, companyImageUrl = :companyImageUrl",
       ExpressionAttributeValues: {
         ":companyName": updatedCompany.companyName,
-        ":companyLocation": updatedCompany.companyLocation,
-        ":companyEmail": updatedCompany.companyEmail,
+        ":latitude": updatedCompany.latitude,
+        ":email": updatedCompany.email,
         ":contactNo": updatedCompany.contactNo,
+        ":longitude": updatedCompany.longitude,
         ":companyImageUrl": updatedCompany.companyImageUrl,
       },
       ReturnValues: "ALL_NEW",
