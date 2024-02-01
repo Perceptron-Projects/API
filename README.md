@@ -25,7 +25,43 @@
 }
 
 ```
+ ### Employee creation dynamodb manually
+```json
+{
+  "userId": {
+    "S": "123"
+  },
+  "birthday": {
+    "S": "2001/06/14"
+  },
+  "companyId": {
+    "S": "e3580212-0428-45f1-bc07-69fe179dabdf"
+  },
+  "contactNo": {
+    "S": "+1234567890"
+  },
+  "email": {
+    "S": "sysemp@gmail.com"
+  },
+  "joinday": {
+    "S": "2023/06/14"
+  },
+  "password": {
+    "S": "$2a$10$GcqyRGJiMGxnQQdEXBTebO1aMRiSYUvG8IMGvcNjc9B8s/dtANlx6"
+  },
+  "role": {
+    "L": [
+      {
+        "S": "employee"
+      }
+    ]
+  },
+  "username": {
+    "S": "sysemployee"
+  }
+}
 
+```
 ### 1. Login
 - **Endpoint:** `POST /api/users/login`
 - **Request:**
