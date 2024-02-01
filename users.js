@@ -15,18 +15,16 @@ const jwt = require("jsonwebtoken");
 const { authenticateToken } = require("./middlewares/authMiddleware");
 const { rolesMiddleware } = require("./middlewares/rolesMiddleware");
 const errors = require('./errors');
-const { S3Client, PutObjectCommand } = require("@aws-sdk/client-s3");
-
+const { isWithinRadius } = require("./utils/geoFencing");
+const { uploadImage } = require("./utils/imageUpload");
 
 const app = express();
 
 const ADMINS_TABLE = process.env.ADMINS_TABLE;
 const EMPLOYEES_TABLE = process.env.EMPLOYEES_TABLE;
 const COMPANY_TABLE = process.env.COMPANY_TABLE;
-const IMAGES_BUCKET_NAME = process.env.IMAGES_BUCKET_NAME;
 const JWT_SECRET = process.env.JWT_SECRET; 
 
-const s3Client = new S3Client();
 
 const client = new DynamoDBClient();
 const dynamoDbClient = DynamoDBDocumentClient.from(client);
@@ -42,7 +40,47 @@ app.use((req, res, next) => {
   }
 });
 
-app.get("/api/users/:userId", rolesMiddleware(["admin","hr","employee"]), async function (req, res) { const params = {
+app.get("/api/users/isWithinRadius/:companyId", rolesMiddleware(["admin","hr","employee"]), async function (req, res) {
+  try {
+    const { userLat, userLon } = req.query;
+    const companyId = req.params.companyId;
+
+    // Validate input data
+    if (!companyId || !userLat || !userLon) {
+      res.status(400).json({ error: "Missing required parameters" });
+      return;
+    }
+
+    // Fetch company details from the COMPANY_TABLE
+    const companyParams = {
+      TableName: COMPANY_TABLE,
+      Key: {
+        companyId: companyId,
+      },
+    };
+
+    const { Item: company } = await dynamoDbClient.send(new GetCommand(companyParams));
+
+    if (!company) {
+      res.status(404).json({ error: "Company not found" });
+      return;
+    }
+
+    // Extract company details
+    const { latitude: companyLat, longitude: companyLon, radiusFromCenterOfCompany } = company;
+
+    // Check if the user is within the predefined radius
+    const withinRadius = isWithinRadius(parseFloat(userLat), parseFloat(userLon), companyLat, companyLon, radiusFromCenterOfCompany);
+
+    res.json({ withinRadius });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Error checking if the user is within the radius" });
+  }
+});
+
+app.get("/api/users/:userId", rolesMiddleware(["admin","hr","employee"]), async function (req, res) { 
+  const params = {
     TableName: EMPLOYEES_TABLE,
     Key: {
       userId: req.params.userId,
@@ -60,7 +98,9 @@ app.get("/api/users/:userId", rolesMiddleware(["admin","hr","employee"]), async 
   } catch (error) {
     console.log(error);
     res.status(500).json({ error: errors.getUsersError });
-  }});
+}});
+
+
 
 app.put("/api/users/edit/:userId", rolesMiddleware(["admin"]), async function (req, res) {
   const { name, email, role, username, contactNo, birthday, joinday, permissions } = req.body;
@@ -269,7 +309,7 @@ app.get("/api/users/hr/all", rolesMiddleware(["admin"]), async function (req, re
   } catch (error) {
     console.log(error);
     res.status(500).json({ error: errors.getHRPersonsError });
-  }});
+}});
 
 app.get("/api/users/admins/all", rolesMiddleware(["superadmin"]), async function (req, res) {
   try {
@@ -428,16 +468,17 @@ app.post("/api/users/create-user", rolesMiddleware(["admin"]), async function (r
 });
 
 app.post("/api/users/company/create", rolesMiddleware(["superadmin"]), async function (req, res) {
-  const { companyName, email, contactNo, longitude, latitude } = req.body;
+  const { companyName, email, contactNo, longitude, latitude, radiusFromCenterOfCompany } = req.body;
 
-  // Validate input data
   if (
     typeof companyName !== "string" ||
     typeof email !== "string" ||
     typeof contactNo !== "string" ||
     typeof longitude !== "string" ||
-    typeof latitude !== "string"
+    typeof latitude !== "string" ||
+    typeof radiusFromCenterOfCompany !== "string"
   ) {
+    
     res.status(400).json({ error: errors.invalidInputData });
     return;
   }
@@ -469,6 +510,7 @@ app.post("/api/users/company/create", rolesMiddleware(["superadmin"]), async fun
       companyEmail: email,
       contactNo: contactNo,
       companyImageUrl: imageUrl || "https://media.istockphoto.com/id/908578348/vector/business-building-illustration.jpg?s=612x612&w=0&k=20&c=thg6Bom79dCRo8pMV3fo7p-8b7m1p-EdLZZPKYpXYvg=",
+      radiusFromCenterOfCompany: radiusFromCenterOfCompany,
     },
   };
   
@@ -484,6 +526,7 @@ app.post("/api/users/company/create", rolesMiddleware(["superadmin"]), async fun
       companyEmail: email,
       contactNo,
       companyImageUrl: imageUrl,
+      radiusFromCenterOfCompany,
     });
   } catch (error) {
     console.error(error);
@@ -671,7 +714,7 @@ app.patch("/api/users/admins/:id", rolesMiddleware(["superadmin"]), async functi
 app.patch("/api/users/company/:id", rolesMiddleware(["superadmin"]), async function (req, res) {
   try {
     const companyId = req.params.id;
-    const { companyName, latitude, email, contactNo, longitude } = req.body;
+    const { companyName, latitude, email, contactNo, longitude, radiusFromCenterOfCompany } = req.body;
 
     // Validate input data
     if (
@@ -679,7 +722,8 @@ app.patch("/api/users/company/:id", rolesMiddleware(["superadmin"]), async funct
       typeof latitude !== "string" ||
       typeof email !== "string" ||
       typeof contactNo !== "string" ||
-      typeof longitude !== "string"
+      typeof longitude !== "string" ||
+      typeof radiusFromCenterOfCompany !== "string"
     ) {
       res.status(400).json({ error: errors.invalidInputData });
       return;
@@ -720,6 +764,7 @@ app.patch("/api/users/company/:id", rolesMiddleware(["superadmin"]), async funct
       email: email || existingCompany.email,
       contactNo: contactNo || existingCompany.contactNo,
       longitude: longitude || existingCompany.longitude,
+      radiusFromCenterOfCompany: radiusFromCenterOfCompany || existingCompany.radiusFromCenterOfCompany,
       companyImageUrl: imageUrl || existingCompany.companyImageUrl || "https://media.istockphoto.com/id/908578348/vector/business-building-illustration.jpg?s=612x612&w=0&k=20&c=thg6Bom79dCRo8pMV3fo7p-8b7m1p-EdLZZPKYpXYvg=",
     };
 
@@ -728,13 +773,14 @@ app.patch("/api/users/company/:id", rolesMiddleware(["superadmin"]), async funct
       Key: {
         companyId: companyId,
       },
-      UpdateExpression: "SET companyName = :companyName, latitude = :latitude, email = :email, contactNo = :contactNo, longitude = :longitude, companyImageUrl = :companyImageUrl",
+      UpdateExpression: "SET companyName = :companyName, latitude = :latitude, email = :email, contactNo = :contactNo, longitude = :longitude, radiusFromCenterOfCompany = :radiusFromCenterOfCompany, companyImageUrl = :companyImageUrl",
       ExpressionAttributeValues: {
         ":companyName": updatedCompany.companyName,
         ":latitude": updatedCompany.latitude,
         ":email": updatedCompany.email,
         ":contactNo": updatedCompany.contactNo,
         ":longitude": updatedCompany.longitude,
+        ":radiusFromCenterOfCompany": updatedCompany.radiusFromCenterOfCompany,
         ":companyImageUrl": updatedCompany.companyImageUrl,
       },
       ReturnValues: "ALL_NEW",
@@ -803,34 +849,7 @@ app.post("/api/users/login", async function (req, res) {
   }
 });
 
-async function uploadImage(imageDataUri) {
-  try {
-    // Extract base64-encoded image data from the data URL
-    const base64Image = imageDataUri.split(',')[1];
 
-    // Decode base64 string to Buffer
-    const decodedImage = Buffer.from(base64Image, 'base64');
 
-    const imageId = uuidv4();
-
-    const uploadParams = {
-      Bucket: IMAGES_BUCKET_NAME,
-      Key: `${imageId}.jpg`,
-      Body: decodedImage,
-      ContentType: "image/jpg",
-      ACL: "public-read",
-    };
-
-   
-
-    await s3Client.send(new PutObjectCommand(uploadParams));
-
-    const imageUrl = `https://${IMAGES_BUCKET_NAME}.s3.amazonaws.com/${imageId}.jpg`;
-    return { imageUrl };
-  } catch (error) {
-    console.error("Error:", error);
-    throw new Error("Image upload failed");
-  }
-}
 
 module.exports.handler = serverless(app);
