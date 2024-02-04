@@ -1,5 +1,67 @@
 ## Users Endpoints (`users.js`)
+ ### Super admin creation dynamodb manually
+```json
+{
+"userId": {
+"S": "123"
+},
+"contactNo": {
+"S": "+1234567890"
+},
+"email": {
+"S": "superadmin@gmail.com"
+},
+"password": {
+"S": "$2a$10$mWe1pQCb8kISB.D17laXmOVY.8OyyVLEM71qls3/zMgA5tQmgGzr."
+},
+"role": {
+"L": [
+{"S": "superadmin"}
+]
+},
+"username": {
+"S": "superadmin"
+}
+}
 
+```
+ ### Employee creation dynamodb manually
+```json
+{
+  "userId": {
+    "S": "123"
+  },
+  "birthday": {
+    "S": "2001/06/14"
+  },
+  "companyId": {
+    "S": "e3580212-0428-45f1-bc07-69fe179dabdf"
+  },
+  "contactNo": {
+    "S": "+1234567890"
+  },
+  "email": {
+    "S": "sysemp@gmail.com"
+  },
+  "joinday": {
+    "S": "2023/06/14"
+  },
+  "password": {
+    "S": "$2a$10$GcqyRGJiMGxnQQdEXBTebO1aMRiSYUvG8IMGvcNjc9B8s/dtANlx6"
+  },
+  "role": {
+    "L": [
+      {
+        "S": "employee"
+      }
+    ]
+  },
+  "username": {
+    "S": "sysemployee"
+  }
+}
+
+```
 ### 1. Login
 - **Endpoint:** `POST /api/users/login`
 - **Request:**
