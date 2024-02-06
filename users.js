@@ -23,6 +23,7 @@ const app = express();
 const ADMINS_TABLE = process.env.ADMINS_TABLE;
 const EMPLOYEES_TABLE = process.env.EMPLOYEES_TABLE;
 const COMPANY_TABLE = process.env.COMPANY_TABLE;
+const ATTENDANCE_TABLE = process.env.ATTENDANCE_TABLE;
 const JWT_SECRET = process.env.JWT_SECRET; 
 
 
@@ -78,6 +79,107 @@ app.get("/api/users/isWithinRadius/:companyId", rolesMiddleware(["admin","hr","e
     res.status(500).json({ error: "Error checking if the user is within the radius" });
   }
 });
+app.post("/api/users/attendance/mark", rolesMiddleware(["hr","employee"]), async function (req, res) {
+  try {
+    const { employeeId, companyId, time, isCheckedIn, isCheckedOut, isWorkFromHome } = req.body;
+
+    // Validate input data
+    if (!employeeId || !companyId || !time || isCheckedIn === undefined || isCheckedOut === undefined || isWorkFromHome === undefined) {
+      return res.status(400).json({ error: "Missing required parameters" });
+    }
+
+    // Check if the employee exists
+    const employeeParams = {
+      TableName: EMPLOYEES_TABLE,
+      Key: { userId: employeeId },
+    };
+
+    const { Item: employee } = await dynamoDbClient.send(new GetCommand(employeeParams));
+
+    if (!employee || employee.companyId !== companyId) {
+      return res.status(404).json({ error: "Employee not found" });
+    }
+
+    // Fetch existing attendance record for the day
+    const today = new Date().toISOString().split('T')[0];
+    const attendanceId = employeeId+ today;
+    const attendanceParams = {
+      TableName: ATTENDANCE_TABLE,
+      Key: { date: today, attendanceId: attendanceId }
+    };
+
+    let { Item: existingAttendance } = await dynamoDbClient.send(new GetCommand(attendanceParams));
+
+    // If a check-in is marked
+    if (isCheckedIn) {
+      if (existingAttendance && existingAttendance.isCheckedIn) {
+        return res.status(400).json({ error: "You are already checked in" });
+      }
+      // If a check-out is not marked yet or the user hasn't checked in yet, create a new record for check-in
+      if (!existingAttendance || !existingAttendance.isCheckedOut) {
+        const checkInRecord = {
+          attendanceId: attendanceId,
+          companyId,
+          date: today,
+          time,
+          isCheckedIn: true,
+          isCheckedOut: false,
+          isWorkFromHome
+        };
+        await dynamoDbClient.send(new PutCommand({ TableName: ATTENDANCE_TABLE, Item: checkInRecord }));
+        return res.json({ message: "Check-in marked successfully" });
+      }
+    }
+
+    // If a check-out is marked
+    if (isCheckedOut) {
+      if (!existingAttendance || !existingAttendance.isCheckedIn) {
+        return res.status(400).json({ error: "Cannot mark check-out without a previous check-in for the day" });
+      }
+      if (existingAttendance.isCheckedOut) {
+        return res.status(400).json({ error: "You are already checked out" });
+      }
+      // Update the existing record for check-out
+      existingAttendance.isCheckedOut = true;
+      existingAttendance.time = time;
+      await dynamoDbClient.send(new PutCommand({ TableName: ATTENDANCE_TABLE, Item: existingAttendance }));
+      return res.json({ message: "Check-out marked successfully" });
+    }
+
+    return res.status(400).json({ error: "Invalid request" });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: "Error marking attendance" });
+  }
+});
+
+
+app.get("/api/users/attendance/checkForTheDay/:employeeId", rolesMiddleware(["hr", "employee"]), async function (req, res) {
+  try {
+    const { employeeId } = req.params;
+    const today = new Date().toISOString().split('T')[0];
+    const attendanceId = employeeId + today;
+
+    // Fetch existing attendance record for the day
+    const attendanceParams = {
+      TableName: ATTENDANCE_TABLE,
+      Key: { date: today, attendanceId: attendanceId }
+    };
+
+    const { Item: existingAttendance } = await dynamoDbClient.send(new GetCommand(attendanceParams));
+
+    if (!existingAttendance) {
+      console.log("Attendance record not found");
+      return res.status(404).json({ error: "Attendance record not found" });
+    }
+
+    return res.json(existingAttendance);
+  } catch (error) {
+    console.error("Error fetching attendance details:", error);
+    return res.status(500).json({ error: "Error fetching attendance details" });
+  }
+});
+
 
 app.get("/api/users/:userId", rolesMiddleware(["admin","hr","employee"]), async function (req, res) { 
   const params = {
@@ -99,8 +201,6 @@ app.get("/api/users/:userId", rolesMiddleware(["admin","hr","employee"]), async 
     console.log(error);
     res.status(500).json({ error: errors.getUsersError });
 }});
-
-
 
 app.put("/api/users/edit/:userId", rolesMiddleware(["admin"]), async function (req, res) {
   const { name, email, role, username, contactNo, birthday, joinday, permissions } = req.body;
