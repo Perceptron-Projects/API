@@ -14,9 +14,11 @@ const { v4: uuidv4 } = require("uuid");
 const jwt = require("jsonwebtoken");
 const { authenticateToken } = require("./middlewares/authMiddleware");
 const { rolesMiddleware } = require("./middlewares/rolesMiddleware");
-const errors = require('./errors');
+const errors = require('./config/errors');
 const { isWithinRadius } = require("./utils/geoFencing");
 const { uploadImage } = require("./utils/imageUpload");
+const urls = require("./config/urls");
+const messages = require('./config/messages');
 
 const app = express();
 
@@ -25,13 +27,12 @@ const EMPLOYEES_TABLE = process.env.EMPLOYEES_TABLE;
 const COMPANY_TABLE = process.env.COMPANY_TABLE;
 const ATTENDANCE_TABLE = process.env.ATTENDANCE_TABLE;
 const JWT_SECRET = process.env.JWT_SECRET; 
-
+const companyDefaultImage = urls.companyDefaultImage;
 
 const client = new DynamoDBClient();
 const dynamoDbClient = DynamoDBDocumentClient.from(client);
 
 app.use(express.json({ limit: "50mb" }));
-
 
 app.use((req, res, next) => {
   if (req.path !== "/api/users/login") {
@@ -48,7 +49,7 @@ app.get("/api/users/isWithinRadius/:companyId", rolesMiddleware(["admin","hr","e
 
     // Validate input data
     if (!companyId || !userLat || !userLon) {
-      res.status(400).json({ error: "Missing required parameters" });
+      res.status(400).json({ error: errors.invalidInputData });
       return;
     }
 
@@ -63,7 +64,7 @@ app.get("/api/users/isWithinRadius/:companyId", rolesMiddleware(["admin","hr","e
     const { Item: company } = await dynamoDbClient.send(new GetCommand(companyParams));
 
     if (!company) {
-      res.status(404).json({ error: "Company not found" });
+      res.status(404).json({ error: errors.adminCompanyInfoNotFound });
       return;
     }
 
@@ -76,7 +77,7 @@ app.get("/api/users/isWithinRadius/:companyId", rolesMiddleware(["admin","hr","e
     res.json({ withinRadius });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: "Error checking if the user is within the radius" });
+    res.status(500).json({ error: errors.userWithinRadiusError });
   }
 });
 app.post("/api/users/attendance/mark", rolesMiddleware(["hr","employee"]), async function (req, res) {
@@ -85,7 +86,7 @@ app.post("/api/users/attendance/mark", rolesMiddleware(["hr","employee"]), async
 
     // Validate input data
     if (!employeeId || !companyId || !time || isCheckedIn === undefined || isCheckedOut === undefined || isWorkFromHome === undefined) {
-      return res.status(400).json({ error: "Missing required parameters" });
+      return res.status(400).json({ error: errors.invalidInputData});
     }
 
     // Check if the employee exists
@@ -97,7 +98,7 @@ app.post("/api/users/attendance/mark", rolesMiddleware(["hr","employee"]), async
     const { Item: employee } = await dynamoDbClient.send(new GetCommand(employeeParams));
 
     if (!employee || employee.companyId !== companyId) {
-      return res.status(404).json({ error: "Employee not found" });
+      return res.status(404).json({ error: errors.userNotFound });
     }
 
     // Fetch existing attendance record for the day
@@ -113,7 +114,7 @@ app.post("/api/users/attendance/mark", rolesMiddleware(["hr","employee"]), async
     // If a check-in is marked
     if (isCheckedIn) {
       if (existingAttendance && existingAttendance.isCheckedIn) {
-        return res.status(400).json({ error: "You are already checked in" });
+        return res.status(400).json({ error: errors.alreadyCheckedIn });
       }
       // If a check-out is not marked yet or the user hasn't checked in yet, create a new record for check-in
       if (!existingAttendance || !existingAttendance.isCheckedOut) {
@@ -127,29 +128,29 @@ app.post("/api/users/attendance/mark", rolesMiddleware(["hr","employee"]), async
           isWorkFromHome
         };
         await dynamoDbClient.send(new PutCommand({ TableName: ATTENDANCE_TABLE, Item: checkInRecord }));
-        return res.json({ message: "Check-in marked successfully" });
+        return res.json({ message: messages.checkInMarkedSuccess});
       }
     }
 
     // If a check-out is marked
     if (isCheckedOut) {
       if (!existingAttendance || !existingAttendance.isCheckedIn) {
-        return res.status(400).json({ error: "Cannot mark check-out without a previous check-in for the day" });
+        return res.status(400).json({ error: errors.previousCheckInNotFound });
       }
       if (existingAttendance.isCheckedOut) {
-        return res.status(400).json({ error: "You are already checked out" });
+        return res.status(400).json({ error: errors.alreadyCheckedOut });
       }
       // Update the existing record for check-out
       existingAttendance.isCheckedOut = true;
       existingAttendance.time = time;
       await dynamoDbClient.send(new PutCommand({ TableName: ATTENDANCE_TABLE, Item: existingAttendance }));
-      return res.json({ message: "Check-out marked successfully" });
+      return res.json({ message: messages.checkOutMarkedSuccess });
     }
 
-    return res.status(400).json({ error: "Invalid request" });
+    return res.status(400).json({ error: errors.invalidInputData });
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ error: "Error marking attendance" });
+    return res.status(500).json({ error: errors.markAttendanceError });
   }
 });
 
@@ -169,14 +170,12 @@ app.get("/api/users/attendance/checkForTheDay/:employeeId", rolesMiddleware(["hr
     const { Item: existingAttendance } = await dynamoDbClient.send(new GetCommand(attendanceParams));
 
     if (!existingAttendance) {
-      console.log("Attendance record not found");
-      return res.status(404).json({ error: "Attendance record not found" });
+      return res.status(404).json({ error: errors.attendanceRecordNotFound });
     }
 
     return res.json(existingAttendance);
   } catch (error) {
-    console.error("Error fetching attendance details:", error);
-    return res.status(500).json({ error: "Error fetching attendance details" });
+    return res.status(500).json({ error: errors.retrieveAttendanceError });
   }
 });
 
@@ -609,7 +608,7 @@ app.post("/api/users/company/create", rolesMiddleware(["superadmin"]), async fun
       },
       companyEmail: email,
       contactNo: contactNo,
-      companyImageUrl: imageUrl || "https://media.istockphoto.com/id/908578348/vector/business-building-illustration.jpg?s=612x612&w=0&k=20&c=thg6Bom79dCRo8pMV3fo7p-8b7m1p-EdLZZPKYpXYvg=",
+      companyImageUrl: imageUrl || companyDefaultImage,
       radiusFromCenterOfCompany: radiusFromCenterOfCompany,
     },
   };
@@ -660,7 +659,7 @@ app.post("/api/users/create-admin", rolesMiddleware(["superadmin"]), async funct
       imageUrl = uploadResult.imageUrl;
     } catch (error) {
       console.error("Error:", error);
-      res.status(500).json({ error: "Image upload failed" });
+      res.status(500).json({ error: errors.imageUploadError });
       return;
     }
   }
@@ -700,7 +699,7 @@ app.post("/api/users/create-admin", rolesMiddleware(["superadmin"]), async funct
       companyId: companyId,
       companyName: companyName,
       password: password,
-      adminImageUrl: imageUrl || "https://www.svgrepo.com/show/384674/account-avatar-profile-user-11.svg",
+      adminImageUrl: imageUrl || urls.adminDefaultImage,
     },
   };
 
@@ -750,7 +749,7 @@ app.patch("/api/users/admins/:id", rolesMiddleware(["superadmin"]), async functi
         imageUrl = uploadResult.imageUrl;
       } catch (error) {
         console.error("Error:", error);
-        res.status(500).json({ error: "Image upload failed" });
+        res.status(500).json({ error: errors.imageUploadError });
         return;
       }
     }
@@ -766,7 +765,7 @@ app.patch("/api/users/admins/:id", rolesMiddleware(["superadmin"]), async functi
     const { Item: existingAdmin } = await dynamoDbClient.send(new GetCommand(adminParams));
 
     if (!existingAdmin) {
-      res.status(404).json({ error: "Admin not found" });
+      res.status(404).json({ error: errors.adminInfoNotFound });
       return;
     }
 
@@ -780,7 +779,7 @@ app.patch("/api/users/admins/:id", rolesMiddleware(["superadmin"]), async functi
       username: username || existingAdmin.username,
       companyId: companyId || existingAdmin.companyId,
       companyName: companyName || existingAdmin.companyName,
-      adminImageUrl: imageUrl || existingAdmin.adminImageUrl || "https://www.svgrepo.com/show/384674/account-avatar-profile-user-11.svg",
+      adminImageUrl: imageUrl || existingAdmin.adminImageUrl || urls.adminDefaultImage,
     };
 
     const updateParams = {
@@ -807,7 +806,7 @@ app.patch("/api/users/admins/:id", rolesMiddleware(["superadmin"]), async functi
     res.json(updatedAttributes);
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: "Error updating admin" });
+    res.status(500).json({ error: errors.updateUserError });
   }
 });
 
@@ -836,7 +835,7 @@ app.patch("/api/users/company/:id", rolesMiddleware(["superadmin"]), async funct
         imageUrl = uploadResult.imageUrl;
       } catch (error) {
         console.error("Error:", error);
-        res.status(500).json({ error: "Image upload failed" });
+        res.status(500).json({ error: errors.imageUploadError });
         return;
       }
     }
@@ -852,7 +851,7 @@ app.patch("/api/users/company/:id", rolesMiddleware(["superadmin"]), async funct
     const { Item: existingCompany } = await dynamoDbClient.send(new GetCommand(companyParams));
 
     if (!existingCompany) {
-      res.status(404).json({ error: "Company not found" });
+      res.status(404).json({ error: errors.companyNotFound });
       return;
     }
 
@@ -865,7 +864,7 @@ app.patch("/api/users/company/:id", rolesMiddleware(["superadmin"]), async funct
       contactNo: contactNo || existingCompany.contactNo,
       longitude: longitude || existingCompany.longitude,
       radiusFromCenterOfCompany: radiusFromCenterOfCompany || existingCompany.radiusFromCenterOfCompany,
-      companyImageUrl: imageUrl || existingCompany.companyImageUrl || "https://media.istockphoto.com/id/908578348/vector/business-building-illustration.jpg?s=612x612&w=0&k=20&c=thg6Bom79dCRo8pMV3fo7p-8b7m1p-EdLZZPKYpXYvg=",
+      companyImageUrl: imageUrl || existingCompany.companyImageUrl || companyDefaultImage,
     };
 
     const updateParams = {
@@ -891,7 +890,7 @@ app.patch("/api/users/company/:id", rolesMiddleware(["superadmin"]), async funct
     res.json(updatedAttributes);
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: "Error updating company" });
+    res.status(500).json({ error: errors.updateCompanyError });
   }
 });
 
@@ -924,7 +923,6 @@ app.post("/api/users/login", async function (req, res) {
       return res.status(401).json({ error: errors.invalidCredentials });
     }
 
-    console.log(user);
 
     // Set the expiration time for the token (e.g., 1 hour from now) in milliseconds
     const expiresInMilliseconds = 3600 * 1000; // 1 hour in milliseconds
