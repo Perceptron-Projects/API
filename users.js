@@ -154,7 +154,6 @@ app.post("/api/users/attendance/mark", rolesMiddleware(["hr","employee"]), async
   }
 });
 
-
 app.get("/api/users/attendance/checkForTheDay/:employeeId", rolesMiddleware(["hr", "employee"]), async function (req, res) {
   try {
     const { employeeId } = req.params;
@@ -178,7 +177,6 @@ app.get("/api/users/attendance/checkForTheDay/:employeeId", rolesMiddleware(["hr
     return res.status(500).json({ error: errors.retrieveAttendanceError });
   }
 });
-
 
 app.get("/api/users/:userId", rolesMiddleware(["admin","hr","employee"]), async function (req, res) { 
   const params = {
@@ -466,7 +464,7 @@ app.get("/api/users/admins/:id", rolesMiddleware(["superadmin"]), async function
   }
 });
 
-app.get("/api/users/getCompanyId/:id", rolesMiddleware(["admin","hr","employee"]), async function (req, res) {
+app.get("/api/users/getCompanyId/:id", rolesMiddleware(["superadmin","admin","hr","employee"]), async function (req, res) {
   try {
     const userId = req.params.id;
     const userParams = {
