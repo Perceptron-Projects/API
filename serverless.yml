@@ -65,7 +65,16 @@ functions:
       - httpApi:
           path: /api/{proxy+}
           method: ANY
-          cors: true
+          cors: 
+            origin: '*'
+            headers:
+              - Content-Type
+              - X-Amz-Date
+              - Authorization
+              - X-Api-Key
+              - X-Amz-Security-Token
+              - X-Amz-User-Agent
+            allowCredentials: false
 
   users:
     handler: users.handler
@@ -74,7 +83,16 @@ functions:
       - httpApi:
           path: /api/users/{proxy+}
           method: ANY
-          cors: true
+          cors: 
+            origin: '*'
+            headers:
+              - Content-Type
+              - X-Amz-Date
+              - Authorization
+              - X-Api-Key
+              - X-Amz-Security-Token
+              - X-Amz-User-Agent
+            allowCredentials: false
 
   calendar:
     handler: calendar.handler
@@ -82,7 +100,16 @@ functions:
       - httpApi:
           path: /api/calendar/{proxy+}
           method: ANY
-          cors: true
+          cors: 
+            origin: '*'
+            headers:
+              - Content-Type
+              - X-Amz-Date
+              - Authorization
+              - X-Api-Key
+              - X-Amz-Security-Token
+              - X-Amz-User-Agent
+            allowCredentials: false
 
 custom:
   adminsTableName: admins
