@@ -153,8 +153,6 @@ app.post("/api/users/attendance/mark", rolesMiddleware(["hr","employee"]), async
     return res.status(500).json({ error: errors.markAttendanceError });
   }
 });
-
-
 app.get("/api/users/attendance/checkForTheDay/:employeeId", rolesMiddleware(["hr", "employee"]), async function (req, res) {
   try {
     const { employeeId } = req.params;
@@ -178,7 +176,6 @@ app.get("/api/users/attendance/checkForTheDay/:employeeId", rolesMiddleware(["hr
     return res.status(500).json({ error: errors.retrieveAttendanceError });
   }
 });
-
 
 app.get("/api/users/:userId", rolesMiddleware(["admin","hr","employee"]), async function (req, res) { 
   const params = {
@@ -466,7 +463,7 @@ app.get("/api/users/admins/:id", rolesMiddleware(["superadmin"]), async function
   }
 });
 
-app.get("/api/users/getCompanyId/:id", rolesMiddleware(["admin","hr","employee"]), async function (req, res) {
+app.get("/api/users/getCompanyId/:id", rolesMiddleware(["superadmin","admin","hr","employee"]), async function (req, res) {
   try {
     const userId = req.params.id;
     const userParams = {
@@ -574,19 +571,7 @@ app.post("/api/users/create-user", rolesMiddleware(["admin"]), async function (r
  
 
     const userId = uuidv4();
-    let password;
-switch (designation) {
-  case "hr":
-    password = "hr123";
-    break;
-  case "supervisor":
-    password = "supervisor123"; 
-    break;
-  case "employee":
-  default:
-    password = "employee123";
-    break;
-}
+    const password = "employee123";
     const hashedPassword = await bcrypt.hash(password, 10);
 
    const params = {
@@ -596,7 +581,6 @@ switch (designation) {
       companyId: companyId,
       contactNo: contactNo,
       dateOfBirth: dateOfBirth,
-      designation: designation,
       email: email,
       joiningDate: joiningDate,
       firstName: firstName,
@@ -616,7 +600,6 @@ switch (designation) {
       companyId,
       contactNo,
       dateOfBirth,
-      designation,
       email,
       joiningDate,
       firstName,
