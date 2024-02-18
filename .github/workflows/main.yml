@@ -11,7 +11,7 @@ jobs:
       - uses: actions/checkout@v3
       - uses: actions/setup-node@v3
         with:
-          node-version: 16  # Adjust if needed
+          node-version: 20  # Adjust if needed
       - run: npm install  # If using npm for dependencies
       - run: npm run build  # If you have a build step
       - run: serverless deploy --stage production  # Deploy to production
