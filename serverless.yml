@@ -65,6 +65,7 @@ functions:
       - httpApi:
           path: /api/{proxy+}
           method: ANY
+          cors: true
 
   users:
     handler: users.handler
@@ -73,6 +74,7 @@ functions:
       - httpApi:
           path: /api/users/{proxy+}
           method: ANY
+          cors: true
 
   calendar:
     handler: calendar.handler
@@ -80,6 +82,7 @@ functions:
       - httpApi:
           path: /api/calendar/{proxy+}
           method: ANY
+          cors: true
 
 custom:
   adminsTableName: admins
