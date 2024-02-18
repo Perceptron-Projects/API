@@ -1,19 +1,38 @@
-name: Auto Deploy to Production
+name: Deploy main branch
 
 on:
+  workflow_dispatch:
   push:
-    branches: [prod]
+    branches:
+      - prod
 
 jobs:
   deploy:
+    name: Deploy
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [20.x]
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v4
         with:
-          node-version: 16  # Adjust if needed
-      - run: npm install  # If using npm for dependencies
-      - run: serverless deploy --stage production  # Deploy to production
+          persist-credentials: false
+
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Npm install
+        run: npm install
+
+      - name: Serverless deploy
+        uses: serverless/github-action@master
+        with:
+          args: deploy
         env:
+          LOG_LEVEL: debug
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
