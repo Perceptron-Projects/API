@@ -197,9 +197,32 @@ app.get("/api/users/:userId", rolesMiddleware(["admin","hr","employee"]), async 
     res.status(500).json({ error: errors.getUsersError });
 }});
 
+app.get("/api/users/branch-admin/:id", rolesMiddleware(["admin"]), async function (req, res) {
+  try {
+    const branchAdminId = req.params.id;
+    const params = {
+      TableName: ADMINS_TABLE,
+      Key: {
+        userId: branchAdminId,
+      },
+    };
+
+    const { Item: branchAdmin } = await dynamoDbClient.send(new GetCommand(params));
+
+    if (branchAdmin) {
+      res.json(branchAdmin);
+    } else {
+      res.status(404).json({ error: errors.branchAdminNotFound });
+    }
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({ error: errors.getBranchAdminError });
+  }
+});
+
 app.patch("/api/users/edit/:userId", rolesMiddleware(["admin"]), async function (req, res) {
   const userId = req.params.userId;
-  const { contactNo, dateOfBirth, designation: role, email, joiningDate, firstName, lastName, username } = req.body;
+  const { contactNo,branchId, dateOfBirth, designation: role, email,branchName, joiningDate, firstName, lastName, username } = req.body;
 
   // Validate input data
   if (
@@ -210,7 +233,9 @@ app.patch("/api/users/edit/:userId", rolesMiddleware(["admin"]), async function 
     typeof joiningDate !== "string" ||
     typeof firstName !== "string" ||
     typeof lastName !== "string" ||
-    typeof username !== "string" 
+    typeof username !== "string" ||
+    typeof branchName !== "string"||
+    typeof branchId !== "string"
   ) {
     res.status(400).json({ error: errors.invalidInputData });
     return;
@@ -255,6 +280,8 @@ app.patch("/api/users/edit/:userId", rolesMiddleware(["admin"]), async function 
     lastName: lastName || existingUser.lastName,
     username: username || existingUser.username,
     imageUrl: imageUrl || existingUser.imageUrl,
+    branchName: branchName || existingUser.branchName,
+    branchId: branchId || existingUser.branchId,
   };
 
   const updateParams = {
@@ -262,7 +289,7 @@ app.patch("/api/users/edit/:userId", rolesMiddleware(["admin"]), async function 
     Key: {
       userId: userId,
     },
-    UpdateExpression: "SET contactNo = :contactNo, dateOfBirth = :dateOfBirth, #r = :role, email = :email, joiningDate = :joiningDate, firstName = :firstName, lastName = :lastName, username = :username, imageUrl = :imageUrl", // Replace role with #r and add ExpressionAttributeNames
+    UpdateExpression: "SET contactNo = :contactNo,branchId = :branchId, dateOfBirth = :dateOfBirth, #r = :role, email = :email, joiningDate = :joiningDate, firstName = :firstName, lastName = :lastName, username = :username, imageUrl = :imageUrl, branchName = :branchName", // Replace role with #r and add ExpressionAttributeNames
     ExpressionAttributeValues: {
       ":contactNo": updatedUser.contactNo,
       ":dateOfBirth": updatedUser.dateOfBirth,
@@ -273,6 +300,8 @@ app.patch("/api/users/edit/:userId", rolesMiddleware(["admin"]), async function 
       ":lastName": updatedUser.lastName,
       ":username": updatedUser.username,
       ":imageUrl": updatedUser.imageUrl,
+      ":branchName": updatedUser.branchName,
+      ":branchId": updatedUser.branchId
     },
     ExpressionAttributeNames: {
       "#r": "role", // Specify that #r should be replaced with "role"
@@ -290,6 +319,96 @@ app.patch("/api/users/edit/:userId", rolesMiddleware(["admin"]), async function 
     console.error(error);
     res.status(500).json({ error: errors.updateUserError });
   }
+
+});
+
+app.patch("/api/users/branch-admin/:id", rolesMiddleware(["admin"]), async function (req, res) {
+const {branchId, contactNo, email, firstName, lastName, username,branchName } = req.body;
+
+// Validate input data
+if (
+  typeof branchId !== "string" ||
+  typeof contactNo !== "string" ||
+  typeof email !== "string" ||
+  typeof firstName !== "string" ||
+  typeof lastName !== "string" ||
+  typeof username !== "string"||
+  typeof branchName !== "string"
+) {
+  res.status(400).json({ error: errors.invalidInputData });
+  return;
+}
+
+let imageUrl = '';
+
+if (req.body.image) {
+  try {
+    // Await the result of the uploadImage function
+    const uploadResult = await uploadImage(req.body.image);
+    imageUrl = uploadResult.imageUrl;
+  } catch (error) {
+    console.error("Error:", error);
+    res.status(500).json({ error: errors.imageUploadError });
+    return;
+  }
+}
+
+const branchAdminId = req.params.id;
+
+const params = {
+  TableName: ADMINS_TABLE,
+  Key: {
+    userId: branchAdminId,
+  },
+};
+
+const { Item: existingBranchAdmin } = await dynamoDbClient.send(new GetCommand(params));
+
+if (!existingBranchAdmin) {
+  res.status(404).json({ error: errors.branchAdminNotFound });
+  return;
+
+}
+
+const updatedBranchAdmin = {
+  ...existingBranchAdmin,
+  branchId: branchId || existingBranchAdmin.branchId,
+  contactNo: contactNo || existingBranchAdmin.contactNo,
+  email: email || existingBranchAdmin.email,
+  firstName: firstName || existingBranchAdmin.firstName,
+  lastName: lastName || existingBranchAdmin.lastName,
+  username: username || existingBranchAdmin.username,
+  imageUrl: imageUrl || existingBranchAdmin.adminImageUrl,
+  branchName: branchName || existingBranchAdmin.branchName,
+};
+
+const updateParams = {
+  TableName: ADMINS_TABLE,
+  Key: {
+    userId: branchAdminId,
+  },
+  UpdateExpression: "SET branchId = :branchId, contactNo = :contactNo, email = :email, firstName = :firstName, lastName = :lastName, username = :username, imageUrl = :imageUrl, branchName = :branchName",
+  ExpressionAttributeValues: {
+    ":branchId": updatedBranchAdmin.branchId,
+    ":contactNo": updatedBranchAdmin.contactNo,
+    ":email": updatedBranchAdmin.email,
+    ":firstName": updatedBranchAdmin.firstName,
+    ":lastName": updatedBranchAdmin.lastName,
+    ":username": updatedBranchAdmin.username,
+    ":imageUrl": updatedBranchAdmin.adminImageUrl,
+    ":branchName": updatedBranchAdmin.branchName,
+  },
+  ReturnValues: "ALL_NEW",
+};
+
+try {
+  const { Attributes: updatedAttributes } = await dynamoDbClient.send(new UpdateCommand(updateParams));
+  res.json(updatedAttributes);
+}
+catch (error) {
+  console.error(error);
+  res.status(500).json({ error: errors.updateBranchAdminError });
+}
 
 });
 
@@ -328,6 +447,50 @@ app.get("/api/users/employees/all", rolesMiddleware(["admin"]), async function (
 
     const { Items: employeePersons } = await dynamoDbClient.send(new ScanCommand(employeeParams));
 
+    res.json(employeePersons);
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({ error: errors.getEmployeePersonsError });
+  }
+});
+
+app.get("/api/users/branch/employees/all/:role/:branchId", rolesMiddleware(["branchadmin"]), async function (req, res) {
+  try {
+    const branchAdminUserId = req.user.userId;
+    const branchId = req.params.branchId;
+    const role = req.params.role;
+
+    // Retrieve the branch admin's company information from the database
+    const branchAdminParams = {
+      TableName: ADMINS_TABLE,
+      Key: {
+        userId: branchAdminUserId,
+      },
+    };
+
+    const { Item: branchAdmin } = await dynamoDbClient.send(new GetCommand(branchAdminParams));
+
+    if (!branchAdmin || !branchAdmin.companyId) {
+      res.status(400).json({ error: errors.userNotFound });
+      return;
+    }
+
+    // Search for the user with the provided userId
+    const employeeParams = {
+      TableName: EMPLOYEES_TABLE,
+      FilterExpression: "#branchId = :branchId AND #role = :role",
+      ExpressionAttributeNames: {
+        "#branchId": "branchId",
+        "#role": "role",
+      },
+      ExpressionAttributeValues: {
+        ":branchId": branchId,
+        ":role": role,
+      },
+    };
+
+    const { Items: employeePersons } = await dynamoDbClient.send(new ScanCommand(employeeParams));
+console.log(employeePersons);
     res.json(employeePersons);
   } catch (error) {
     console.log(error);
@@ -463,7 +626,7 @@ app.get("/api/users/admins/:id", rolesMiddleware(["superadmin"]), async function
   }
 });
 
-app.get("/api/users/getCompanyId/:id", rolesMiddleware(["superadmin","admin","hr","employee"]), async function (req, res) {
+app.get("/api/users/getCompanyId/:id", rolesMiddleware(["superadmin","admin","admin","hr","employee"]), async function (req, res) {
   try {
     const userId = req.params.id;
     const userParams = {
@@ -497,7 +660,41 @@ app.get("/api/users/getCompanyId/:id", rolesMiddleware(["superadmin","admin","hr
 
 } );
 
-app.get("/api/users/company/:id", rolesMiddleware(["superadmin"]), async function (req, res) {
+app.get("/api/users/company/branch-id/", rolesMiddleware(["admin","branchadmin","hr","employee"]), async function (req, res) {
+
+  try {
+    const userId = req.user.userId;
+    const userParams = {
+      TableName: EMPLOYEES_TABLE,
+      Key: {
+        userId: userId,
+      },
+    };
+
+    const adminsParams = {
+      TableName: ADMINS_TABLE,
+      Key: {
+        userId: userId,
+      },
+    };
+
+    const { Item: admin } = await dynamoDbClient.send(new GetCommand(adminsParams));
+    const { Item: user } = await dynamoDbClient.send(new GetCommand(userParams));
+
+    if (admin) {
+      res.json(admin.branchId);
+    } else if (user) {
+      res.json(user.branchId);
+    } else {
+      res.status(404).json({ error: errors.userNotFound });
+    }
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({ error: errors.getBranchIdError });
+  }
+});
+
+app.get("/api/users/company/:id", rolesMiddleware(["superadmin","admin"]), async function (req, res) {
   try {
     const companyId = req.params.id;
     const companyParams = {
@@ -536,10 +733,10 @@ app.get("/api/users/companies/all", rolesMiddleware(["superadmin"]), async funct
 });
 
 app.post("/api/users/create-user", rolesMiddleware(["admin"]), async function (req, res) {
-   const { companyId,contactNo, dateOfBirth, designation, email, joiningDate,firstName, lastName,username} = req.body;
+   const { companyId,contactNo, dateOfBirth, designation,branchName, email, joiningDate,firstName, lastName,username,branchId } = req.body;
 
   // Validate input data
- if(
+  if (
     typeof companyId !== "string" ||
     typeof contactNo !== "string" ||
     typeof dateOfBirth !== "string" ||
@@ -548,12 +745,13 @@ app.post("/api/users/create-user", rolesMiddleware(["admin"]), async function (r
     typeof joiningDate !== "string" ||
     typeof firstName !== "string" ||
     typeof lastName !== "string" ||
-    typeof username !== "string"
+    typeof username !== "string"||
+    typeof branchId !== "string"||
+    typeof branchName !== "string"
   ) {
     res.status(400).json({ error: errors.invalidInputData });
     return;
   }
-
 
   let imageUrl = '';
 
@@ -568,30 +766,30 @@ app.post("/api/users/create-user", rolesMiddleware(["admin"]), async function (r
       return;
     }
   }
- 
 
-    const userId = uuidv4();
-    const password = "employee123";
-    const hashedPassword = await bcrypt.hash(password, 10);
+  const userId = uuidv4();
 
-   const params = {
+  const password = bcrypt.hashSync("employee123", 10);
+
+  const params = {
     TableName: EMPLOYEES_TABLE,
     Item: {
       userId: userId,
       companyId: companyId,
       contactNo: contactNo,
       dateOfBirth: dateOfBirth,
+      role: designation,
       email: email,
       joiningDate: joiningDate,
       firstName: firstName,
       lastName: lastName,
       username: username,
-      role: designation,
-      password: hashedPassword,
+      password: password,
+      branchId: branchId,
       imageUrl: imageUrl || urls.employeeDefaultImage,
+      branchName: branchName,
     },
-   };
-
+  };
 
   try {
     await dynamoDbClient.send(new PutCommand(params));
@@ -600,19 +798,25 @@ app.post("/api/users/create-user", rolesMiddleware(["admin"]), async function (r
       companyId,
       contactNo,
       dateOfBirth,
+      role: designation,
       email,
       joiningDate,
       firstName,
       lastName,
       username,
-      role: designation,
+      branchId,
       imageUrl,
+      branchName,
     });
-  
-  } catch (error) {
+  }
+  catch (error) {
     console.error(error);
     res.status(500).json({ error: errors.createUserError });
   }
+
+
+
+
 
 });
 
@@ -684,6 +888,365 @@ app.post("/api/users/company/create", rolesMiddleware(["superadmin"]), async fun
   
 });
 
+app.post("/api/users/company/create-branch", rolesMiddleware(["admin"]), async function (req, res) {
+  const { branchName, companyId, contactNo, email, latitude, longitude, radiusFromCenterOfBranch } = req.body;
+console.log(req.body);
+  if (
+    typeof branchName !== "string" ||
+    typeof companyId !== "string" ||
+    typeof contactNo !== "string" ||
+    typeof email !== "string" ||
+    typeof latitude !== "string" ||
+    typeof longitude !== "string" ||
+    typeof radiusFromCenterOfBranch !== "string"
+  ) {
+    res.status(400).json({ error: errors.invalidInputData });
+    return;
+  }
+
+  let imageUrl = '';
+
+  if (req.body.image) {
+    try {
+      // Await the result of the uploadImage function
+      const uploadResult = await uploadImage(req.body.image);
+      imageUrl = uploadResult.imageUrl;
+    } catch (error) {
+      console.error("Error:", error);
+      res.status(500).json({ error: errors.imageUploadError });
+      return;
+    }
+  }
+
+  const branchId = uuidv4(); // Generate a unique branchId
+
+  const params = {
+    TableName: COMPANY_TABLE,
+    Key: {
+      companyId: companyId,
+    },
+  };
+
+  const { Item: company } = await dynamoDbClient.send(new GetCommand(params));
+
+  if (!company) {
+    res.status(404).json({ error: errors.companyNotFound });
+    return;
+  }
+
+  const branches = company.branches || [];
+  branches.push({
+    branchId,
+    branchName,
+    location: {
+      longitude,
+      latitude,
+    },
+    branchEmail: email,
+    contactNo,
+    branchImageUrl: imageUrl || urls.companyDefaultImage,
+    radiusFromCenterOfBranch,
+  });
+
+  console.log(branches);
+
+  const updateParams = {
+    TableName: COMPANY_TABLE,
+    Key: {
+      companyId: companyId,
+    },
+    UpdateExpression: "SET branches = :branches",
+    ExpressionAttributeValues: {
+      ":branches": branches,
+    },
+    ReturnValues: "ALL_NEW",
+  };
+
+  try {
+    const { Attributes: updatedAttributes } = await dynamoDbClient.send(new UpdateCommand(updateParams));
+    res.json(updatedAttributes);
+  }
+  catch (error) {
+    console.error(error);
+    res.status(500).json({ error: errors.createBranchError });
+  }
+
+});
+
+app.get("/api/users/branch/:id", rolesMiddleware(["admin"]), async function (req, res) {
+  try {
+    const branchId = req.params.id;
+    const params = {
+      TableName: COMPANY_TABLE,
+      Key: {
+        companyId: req.user.companyId,
+      },
+    };
+
+    const { Item: company } = await dynamoDbClient.send(new GetCommand(params));
+
+    if (!company) {
+      res.status(404).json({ error: errors.companyNotFound });
+      return;
+    }
+
+    const branch = company.branches.find((branch) => branch.branchId === branchId);
+    if (!branch) {
+      res.status(404).json({ error: errors.branchNotFound });
+      return;
+    }
+
+    res.json(branch);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: errors.getBranchError });
+  }
+});
+
+app.post("/api/users/create-branch-admin", rolesMiddleware(["admin"]), async function (req, res) {
+  const { branchId, companyId, contactNo, email, firstName, lastName, username } = req.body;
+
+  // Validate input data
+  if (
+    typeof branchId !== "string" ||
+    typeof companyId !== "string" ||
+    typeof contactNo !== "string" ||
+    typeof email !== "string" ||
+    typeof firstName !== "string" ||
+    typeof lastName !== "string" ||
+    typeof username !== "string"
+  ) {
+    res.status(400).json({ error: errors.invalidInputData });
+    return;
+  }
+
+  let imageUrl = '';
+
+  if (req.body.image) {
+    try {
+      // Await the result of the uploadImage function
+      const uploadResult = await uploadImage(req.body.image);
+      imageUrl = uploadResult.imageUrl;
+    } catch (error) {
+      console.error("Error:", error);
+      res.status(500).json({ error: errors.imageUploadError });
+      return;
+    }
+  }
+
+  const userId = uuidv4();
+
+  const password = bcrypt.hashSync("admin123", 10);
+
+  // Check if the branchId exists in the branches array of the company
+
+  const params = {
+    TableName: COMPANY_TABLE,
+    Key: {
+      companyId: companyId,
+    },
+  };
+
+  const { Item: company } = await dynamoDbClient.send(new GetCommand(params));
+
+  if (!company) {
+    res.status(404).json({ error: errors.companyNotFound });
+    return;
+  }
+
+  const branch = company.branches.find((branch) => branch.branchId === branchId);
+
+  if (!branch) {
+    res.status(404).json({ error: errors.branchNotFound });
+    return;
+  }
+
+  // Branch found, include branchId and branchName in the admin data
+  const paramsAdmins = {
+    TableName: ADMINS_TABLE,
+    Item: {
+      userId: userId,
+      firstName: firstName,
+      lastName: lastName,
+      email: email,
+      contactNo: contactNo,
+      role: "branchadmin",
+      branchId: branchId,
+      branchName: branch.branchName,
+      companyId: companyId,
+      password: password,
+      companyName: company.companyName,
+      adminImageUrl: imageUrl || urls.adminDefaultImage,
+    },
+  };
+
+  try {
+    await dynamoDbClient.send(new PutCommand(paramsAdmins));
+    res.json({
+      userId,
+      firstName,
+      lastName,
+      email,
+      contactNo,
+      role: "branchadmin",
+      branchId,
+      branchName: branch.branchName,
+      companyId,
+      companyName: company.companyName,
+      adminImageUrl: imageUrl,
+    });
+  }
+  catch (error) {
+    console.error(error);
+    res.status(500).json({ error: errors.createBranchAdminError });
+  }
+
+});
+
+app.get("/api/users/company/branch-admins/:companyId", rolesMiddleware(["admin"]), async function (req, res) {
+
+  try {
+    const companyId = req.params.companyId;
+
+    const params = {
+      TableName: ADMINS_TABLE,
+      FilterExpression: "#companyId = :companyId AND #role = :role",
+      ExpressionAttributeNames: {
+        "#companyId": "companyId",
+        "#role": "role",
+      },
+      ExpressionAttributeValues: {
+        ":companyId": companyId,
+        ":role": "branchadmin",
+      },
+    };
+
+    const { Items: branchAdmins } = await dynamoDbClient.send(new ScanCommand(params));
+    
+    res.json(branchAdmins);
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({ error: errors.getBranchAdminsError });
+  }
+
+});
+
+app.get("/api/users/company/branches/:companyId", rolesMiddleware(["admin"]), async function (req, res) {
+  try {
+    console.log(req.params.companyId);
+    const companyId = req.params.companyId;
+    console.log(companyId,"hiii");
+    const params = { 
+      TableName: COMPANY_TABLE,
+      Key: {
+        companyId: companyId,
+      }, 
+    };
+  
+    const { Item: company } = await dynamoDbClient.send(new GetCommand(params));
+
+    if (!company) {
+      res.status(404).json({ error: errors.companyNotFound });
+      return;
+    }
+
+    res.json(company.branches);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: errors.getBranchesError });
+  }
+
+});
+
+app.patch("/api/users/company/branch/:branchId", rolesMiddleware(["admin"]), async function (req, res) {
+  try {
+    const branchId = req.params.branchId;
+    const { branchName, contactNo, email, latitude, longitude, radiusFromCenterOfBranch } = req.body;
+
+    // Validate input data
+    if (
+      typeof branchName !== "string" ||
+      typeof contactNo !== "string" ||
+      typeof email !== "string" ||
+      typeof latitude !== "string" ||
+      typeof longitude !== "string" ||
+      typeof radiusFromCenterOfBranch !== "string"
+    ) {
+      res.status(400).json({ error: errors.invalidInputData });
+      return;
+    }
+
+    let imageUrl = '';
+
+    if (req.body.image) {
+      try {
+        // Await the result of the uploadImage function
+        const uploadResult = await uploadImage(req.body.image);
+        imageUrl = uploadResult.imageUrl;
+      } catch (error) {
+        console.error("Error:", error);
+        res.status(500).json({ error: errors.imageUploadError });
+        return;
+      }
+    }
+
+    const params = {
+      TableName: COMPANY_TABLE,
+      Key: {
+        companyId: req.user.companyId,
+      },
+    };
+
+    const { Item: company } = await dynamoDbClient.send(new GetCommand(params));
+
+    if (!company) {
+      res.status(404).json({ error: errors.companyNotFound });
+      return;
+    }
+
+    const branch = company.branches.find((branch) => branch.branchId === branchId);
+
+    if (!branch) {
+      res.status(404).json({ error: errors.branchNotFound });
+      return;
+    }
+
+    const updatedBranch = {
+      ...branch,
+      branchName: branchName || branch.branchName,
+      location: {
+        latitude: latitude || branch.location.latitude,
+        longitude: longitude || branch.location.longitude,
+      },
+      branchEmail: email || branch.branchEmail,
+      contactNo: contactNo || branch.contactNo,
+      branchImageUrl: imageUrl || branch.branchImageUrl || urls.companyDefaultImage,
+      radiusFromCenterOfBranch: radiusFromCenterOfBranch || branch.radiusFromCenterOfBranch,
+    };
+
+    const updateParams = {
+      TableName: COMPANY_TABLE,
+      Key: {
+        companyId: req.user.companyId,
+      },
+      UpdateExpression: "SET branches = :branches",
+      ExpressionAttributeValues: {
+        ":branches": company.branches.map((branch) => (branch.branchId === branchId ? updatedBranch : branch)),
+      },
+      ReturnValues: "ALL_NEW",
+    };
+
+    const { Attributes: updatedAttributes } = await dynamoDbClient.send(new UpdateCommand(updateParams));
+
+    res.json(updatedAttributes);
+
+  } catch (error) {
+
+    console.error(error);
+    res.status(500).json({ error: errors.updateBranchError });
+  }
+});
+
 app.post("/api/users/create-admin", rolesMiddleware(["superadmin"]), async function (req, res) {
   const { firstName, lastName, companyData, email, contactNo } = req.body;
 
@@ -745,7 +1308,7 @@ app.post("/api/users/create-admin", rolesMiddleware(["superadmin"]), async funct
       lastName: lastName,
       email: email,
       contactNo: contactNo.toString(),
-      role: "admin",
+      role: "companyadmin",
       companyId: companyId,
       companyName: companyName,
       password: password,
@@ -763,7 +1326,7 @@ app.post("/api/users/create-admin", rolesMiddleware(["superadmin"]), async funct
       contactNo,
       companyId,
       companyName,
-      role: "admin",
+      role: "companyadmin",
       adminImageUrl: imageUrl,
     });
   } catch (error) {
@@ -975,11 +1538,12 @@ app.post("/api/users/login", async function (req, res) {
 
 
     // Set the expiration time for the token (e.g., 1 hour from now) in milliseconds
-    const expiresInMilliseconds = 3600 * 1000; // 1 hour in milliseconds
+    const expiresInMilliseconds = 3600 * 1000 * 24; // 1 day in milliseconds
     const expirationTime = Date.now() + expiresInMilliseconds;
 
     const token = jwt.sign({
       userId: user.userId,
+      companyId: user.companyId,
       role: user.role,
       exp: expirationTime, // Set the expiration time in the payload
     }, JWT_SECRET);
@@ -988,6 +1552,7 @@ app.post("/api/users/login", async function (req, res) {
       token,
       role: user.role,
       userId: user.userId,
+      companyId: user.companyId,
       expiresIn: expiresInMilliseconds, // Include the expiration time in the response
     });
 
