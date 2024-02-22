@@ -177,7 +177,7 @@ app.get("/api/users/attendance/checkForTheDay/:employeeId", rolesMiddleware(["hr
   }
 });
 
-app.get("/api/users/:userId", rolesMiddleware(["admin","hr","employee"]), async function (req, res) { 
+app.get("/api/users/:userId", rolesMiddleware(["admin","branchadmin","hr","employee"]), async function (req, res) { 
   const params = {
     TableName: EMPLOYEES_TABLE,
     Key: {
@@ -220,10 +220,10 @@ app.get("/api/users/branch-admin/:id", rolesMiddleware(["admin"]), async functio
   }
 });
 
-app.patch("/api/users/edit/:userId", rolesMiddleware(["admin"]), async function (req, res) {
+app.patch("/api/users/edit/:userId", rolesMiddleware(["admin","branchadmin"]), async function (req, res) {
   const userId = req.params.userId;
   const { contactNo,branchId, dateOfBirth, designation: role, email,branchName, joiningDate, firstName, lastName, username } = req.body;
-
+  
   // Validate input data
   if (
     (typeof contactNo !== "string" && typeof contactNo !== "number") ||
@@ -234,8 +234,8 @@ app.patch("/api/users/edit/:userId", rolesMiddleware(["admin"]), async function 
     typeof firstName !== "string" ||
     typeof lastName !== "string" ||
     typeof username !== "string" ||
-    typeof branchName !== "string"||
-    typeof branchId !== "string"
+    typeof branchId !== "string"||
+    typeof branchName !== "string"
   ) {
     res.status(400).json({ error: errors.invalidInputData });
     return;
@@ -626,7 +626,7 @@ app.get("/api/users/admins/:id", rolesMiddleware(["superadmin"]), async function
   }
 });
 
-app.get("/api/users/getCompanyId/:id", rolesMiddleware(["superadmin","admin","admin","hr","employee"]), async function (req, res) {
+app.get("/api/users/getCompanyId/:id", rolesMiddleware(["superadmin","admin","branchadmin","hr","employee"]), async function (req, res) {
   try {
     const userId = req.params.id;
     const userParams = {
@@ -682,9 +682,19 @@ app.get("/api/users/company/branch-id/", rolesMiddleware(["admin","branchadmin",
     const { Item: user } = await dynamoDbClient.send(new GetCommand(userParams));
 
     if (admin) {
-      res.json(admin.branchId);
+      res.json(
+        {
+          branchId: admin.branchId,
+          branchName: admin.branchName
+        }
+      );
     } else if (user) {
-      res.json(user.branchId);
+      res.json(
+        {
+          branchId: user.branchId,
+          branchName: user.branchName
+        }
+      );
     } else {
       res.status(404).json({ error: errors.userNotFound });
     }
@@ -694,7 +704,7 @@ app.get("/api/users/company/branch-id/", rolesMiddleware(["admin","branchadmin",
   }
 });
 
-app.get("/api/users/company/:id", rolesMiddleware(["superadmin","admin"]), async function (req, res) {
+app.get("/api/users/company/:id", rolesMiddleware(["superadmin","admin","branchadmin"]), async function (req, res) {
   try {
     const companyId = req.params.id;
     const companyParams = {
@@ -732,9 +742,9 @@ app.get("/api/users/companies/all", rolesMiddleware(["superadmin"]), async funct
   }
 });
 
-app.post("/api/users/create-user", rolesMiddleware(["admin"]), async function (req, res) {
+app.post("/api/users/create-user", rolesMiddleware(["admin","branchadmin"]), async function (req, res) {
    const { companyId,contactNo, dateOfBirth, designation,branchName, email, joiningDate,firstName, lastName,username,branchId } = req.body;
-
+   
   // Validate input data
   if (
     typeof companyId !== "string" ||
@@ -973,7 +983,7 @@ console.log(req.body);
 
 });
 
-app.get("/api/users/branch/:id", rolesMiddleware(["admin"]), async function (req, res) {
+app.get("/api/users/branch/:id", rolesMiddleware(["admin",]), async function (req, res) {
   try {
     const branchId = req.params.id;
     const params = {
