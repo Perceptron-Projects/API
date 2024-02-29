@@ -660,7 +660,7 @@ app.get("/api/users/getCompanyId/:id", rolesMiddleware(["superadmin","admin","br
 
 } );
 
-app.get("/api/users/company/branch-id/", rolesMiddleware(["admin","branchadmin","hr","employee"]), async function (req, res) {
+app.get("/api/users/company/branch-id/", rolesMiddleware(["superadmin","admin","branchadmin","hr","employee"]), async function (req, res) {
 
   try {
     const userId = req.user.userId;
@@ -1141,7 +1141,7 @@ app.get("/api/users/company/branch-admins/:companyId", rolesMiddleware(["admin"]
 
 });
 
-app.get("/api/users/company/branches/:companyId", rolesMiddleware(["admin"]), async function (req, res) {
+app.get("/api/users/company/branches/:companyId", rolesMiddleware(["superadmin","admin"]), async function (req, res) {
   try {
     console.log(req.params.companyId);
     const companyId = req.params.companyId;
@@ -1168,7 +1168,7 @@ app.get("/api/users/company/branches/:companyId", rolesMiddleware(["admin"]), as
 
 });
 
-app.patch("/api/users/company/branch/:branchId", rolesMiddleware(["admin"]), async function (req, res) {
+app.patch("/api/users/company/branch/:branchId", rolesMiddleware(["superadmin","admin"]), async function (req, res) {
   try {
     const branchId = req.params.branchId;
     const { branchName, contactNo, email, latitude, longitude, radiusFromCenterOfBranch } = req.body;
@@ -1318,7 +1318,7 @@ app.post("/api/users/create-admin", rolesMiddleware(["superadmin"]), async funct
       lastName: lastName,
       email: email,
       contactNo: contactNo.toString(),
-      role: "companyadmin",
+      role: "admin",
       companyId: companyId,
       companyName: companyName,
       password: password,
@@ -1336,7 +1336,7 @@ app.post("/api/users/create-admin", rolesMiddleware(["superadmin"]), async funct
       contactNo,
       companyId,
       companyName,
-      role: "companyadmin",
+      role: "admin",
       adminImageUrl: imageUrl,
     });
   } catch (error) {
