@@ -979,13 +979,12 @@ app.post("/api/users/login", async function (req, res) {
 
 
     // Set the expiration time for the token (e.g., 1 hour from now) in milliseconds
-    const expiresInMilliseconds = 3600 * 1000; // 1 hour in milliseconds
+    const expiresInMilliseconds = 3600 * 1000 * 24; // 1 day in milliseconds
     const expirationTime = Date.now() + expiresInMilliseconds;
-
-    console.log(expirationTime);
 
     const token = jwt.sign({
       userId: user.userId,
+      companyId: user.companyId,
       role: user.role,
       exp: expirationTime, // Set the expiration time in the payload
     }, JWT_SECRET);
@@ -994,6 +993,7 @@ app.post("/api/users/login", async function (req, res) {
       token,
       role: user.role,
       userId: user.userId,
+      companyId: user.companyId,
       expiresIn: expiresInMilliseconds, // Include the expiration time in the response
     });
 
@@ -1002,6 +1002,7 @@ app.post("/api/users/login", async function (req, res) {
     return res.status(500).json({ error: errors.getUsersError });
   }
 });
+
 
 // Route for handling forgot password requests
 app.post('/api/users/forget-password', async (req, res) => {
@@ -1044,27 +1045,19 @@ app.post('/api/users/forget-password', async (req, res) => {
     }
 
     // Generate a random token using uuid and set expiration time to 15 minutes from now
-    const token = uuidv4();
+    const otp = uuidv4();
     const expirationTime = new Date();
     expirationTime.setMinutes(expirationTime.getMinutes() + 15); // Token expires in 15 minutes
 
-    // // Store the token and expiration time in DynamoDB against the user's email
-    // await dynamoDB.put({
-    //   TableName: EMPLOYEES_TABLE,
-    //   Item: {
-    //     email,
-    //     token,
-    //     expiresAt: expirationTime.getTime(), // Store expiration time in milliseconds
-    //   },
-    // }).promise();
-
-    await dynamoDbClient.send(new PutCommand({
+    await dynamoDbClient.send(new UpdateCommand({
       TableName: EMPLOYEES_TABLE,
-      Item: {
-        userId: userId,
-        email: email,
-        token: token,
-        expiresAt: expirationTime.getTime(),
+      Key: {
+        userId: userId, 
+      },
+      UpdateExpression: 'SET otp = :otp, expiresAt = :expiresAt',
+      ExpressionAttributeValues: {
+        ':otp': otp,
+        ':expiresAt': expirationTime.getTime(), 
       },
     }));
 
@@ -1081,7 +1074,7 @@ app.post('/api/users/forget-password', async (req, res) => {
         },
         Body: {
           Text: {
-            Data: `Your password reset token is: ${token}`,
+            Data: `Your password reset token is: ${otp}`,
           },
         },
       },
@@ -1100,7 +1093,7 @@ app.post('/api/users/forget-password', async (req, res) => {
 // Route for comparing the token
 app.post('/api/users/compare-token', async (req, res) => {
   try {
-    const { email, token } = req.body;
+    const { email, otp: token } = req.body;
     // Retrieve the token and expiration time from DynamoDB based on the user's email
     const data = await dynamoDB.get({
       TableName: EMPLOYEES_TABLE,
@@ -1111,10 +1104,10 @@ app.post('/api/users/compare-token', async (req, res) => {
       return res.status(400).json({ message: 'Invalid email or token' });
     }
 
-    const { token: storedToken, expiresAt } = data.Item;
+    const { token: otp, expiresAt } = data.Item;
 
     // Check if the provided token matches the stored token
-    if (token !== storedToken) {
+    if (otp !== storedToken) {
       return res.status(400).json({ message: 'Invalid email or token' });
     }
 
@@ -1132,49 +1125,79 @@ app.post('/api/users/compare-token', async (req, res) => {
   }
 });
 
-// Route for resetting the password
+app.post('/api/users/compare-otp', async (req, res) => {
+  try {
+    const { email, otp: providedOtp } = req.body;
+
+    
+    const { Items } = await dynamoDbClient.send(new ScanCommand({
+      TableName: EMPLOYEES_TABLE,
+      FilterExpression: 'email = :email',
+      ExpressionAttributeValues: {
+        ':email': email,
+      },
+    }));
+
+    if (!Items) {
+      return res.status(400).json({ message: 'Invalid email or OTP' });
+    }
+
+    // Assuming the first match is what we need
+    const { otp: storedOtp, expiresAt } = Items[0];
+
+    // Check if the provided OTP matches the stored OTP
+    if (providedOtp !== storedOtp) {
+      return res.status(400).json({ message: 'Invalid email or OTP' });
+    }
+
+    // Check if the OTP is expired
+    if (Date.now() > expiresAt) {
+      return res.status(400).json({ message: 'OTP has expired' });
+    }
+
+    // OTP is valid and not expired, proceed with the password reset flow
+    return res.status(200).json({ message: 'OTP is valid' });
+  } catch (error) {
+    console.error('Error:', error);
+    // Return error response
+    return res.status(500).json({ message: 'Error comparing OTP' });
+  }
+});
+
 app.post('/api/users/reset-password', async (req, res) => {
   try {
-    const { email, token, newPassword } = req.body;
-    // Retrieve the token and expiration time from DynamoDB based on the user's email
-    const data = await dynamoDB.get({
+    const { email, otp: providedOtp, newPassword } = req.body;
+
+    // Retrieve the OTP and expiration time from DynamoDB based on the user's email
+    const { Items } = await dynamoDbClient.send(new ScanCommand({
       TableName: EMPLOYEES_TABLE,
-      Key: { email }
-    }).promise();
+      FilterExpression: 'email = :email',
+      ExpressionAttributeValues: {
+        ':email': email,
+      },
+    }));
 
-    if (!data.Item) {
-      return res.status(400).json({ message: 'Invalid email or token' });
+    if (!Items || Items.length === 0) {
+      return res.status(400).json({ message: 'Invalid request' });
     }
 
-    const { token: storedToken, expiresAt } = data.Item;
-
-    // Check if the provided token matches the stored token
-    if (token !== storedToken) {
-      return res.status(400).json({ message: 'Invalid email or token' });
-    }
-
-    // Check if the token is expired
-    if (Date.now() > expiresAt) {
-      return res.status(400).json({ message: 'Token has expired' });
-    }
-
-    // Hash the new Password
-
+    // Hash the new password
     const hashedPassword = await bcrypt.hash(newPassword, 10);
 
-    // Update the user's password in the database
-
-    await dynamoDB.update({ 
-      TableName: TABLE_NAME,
-      Key: { email },
-      UpdateExpression: 'set password = :p',
+    const updateResponse = await dynamoDbClient.send(new UpdateCommand({
+      TableName: EMPLOYEES_TABLE,
+      Key: {
+        'userId': Items[0].userId,
+      },
+      UpdateExpression: 'SET password = :password, otp = :nullValue, expiresAt = :pastTime',
       ExpressionAttributeValues: {
-        ':p': hashedPassword
-      }
-    }).promise();
+        ':password': hashedPassword,
+        ':nullValue': null, 
+        ':pastTime': 0, 
+      },
+    }));
 
-    // Return success response
-    return res.status(200).json({ message: 'Password updated successfully' });
+    return res.status(200).json({ message: 'Password reset successfully' });
   } catch (error) {
     console.error('Error:', error);
     // Return error response
