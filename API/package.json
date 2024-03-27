@@ -1,0 +1,22 @@
+{
+  "name": "AMS-Project",
+  "version": "1.0.0",
+  "description": "",
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.478.0",
+    "@aws-sdk/client-s3": "^3.496.0",
+    "@aws-sdk/lib-dynamodb": "^3.478.0",
+    "@aws-sdk/lib-storage": "^3.496.0",
+    "aws-sdk": "^2.1567.0",
+    "bcrypt": "^5.1.1",
+    "bcryptjs": "^2.4.3",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "jsonwebtoken": "^9.0.2",
+    "serverless-http": "^3.2.0",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "serverless-offline": "^13.3.3"
+  }
+}
