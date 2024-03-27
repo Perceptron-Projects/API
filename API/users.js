@@ -6,6 +6,7 @@ const {
   PutCommand,
   UpdateCommand,
   ScanCommand,
+  QueryCommand
 } = require("@aws-sdk/lib-dynamodb");
 const express = require("express");
 const serverless = require("serverless-http");
@@ -19,6 +20,7 @@ const { isWithinRadius } = require("./utils/geoFencing");
 const { uploadImage } = require("./utils/imageUpload");
 const urls = require("./config/urls");
 const messages = require('./config/messages');
+const AWS = require('aws-sdk');
 
 const app = express();
 
@@ -31,6 +33,8 @@ const companyDefaultImage = urls.companyDefaultImage;
 
 const client = new DynamoDBClient();
 const dynamoDbClient = DynamoDBDocumentClient.from(client);
+const ses = new AWS.SES({ region: 'us-east-1' });
+
 
 app.use(express.json({ limit: "50mb" }));
 
@@ -999,6 +1003,183 @@ app.post("/api/users/login", async function (req, res) {
   }
 });
 
+// Route for handling forgot password requests
+app.post('/api/users/forget-password', async (req, res) => {
+  try {
+    const { email } = req.body;
+    console.log('Email:', email);
 
+    // Check if the user exists in the database
+
+    // Placeholder for logic to find userId based on email
+    let userId;
+
+    // Assuming email can directly be used to query or scan for the userId
+    const params = {
+      TableName: EMPLOYEES_TABLE,
+      // Use a query if 'email' is indexed or the primary key
+      KeyConditionExpression: 'email = :email',
+      ExpressionAttributeValues: {
+        ':email': email,
+      },
+    };
+
+    const { Items } = await dynamoDbClient.send(new ScanCommand({
+      TableName: EMPLOYEES_TABLE,
+      FilterExpression: 'email = :email',
+      ExpressionAttributeValues: {
+        ':email': email,
+      },
+    }));
+    
+
+    //const { Items } = await dynamoDbClient.send(new QueryCommand(params));
+    
+    // If Items is not empty, extract userId
+    if (Items.length > 0) {
+      userId = Items[0].userId; // Assuming the first match is what we need
+    } else {
+      // Handle case where no user is found with the given email
+      return res.status(404).json({ message: 'No user found with the provided email' });
+    }
+
+    // Generate a random token using uuid and set expiration time to 15 minutes from now
+    const token = uuidv4();
+    const expirationTime = new Date();
+    expirationTime.setMinutes(expirationTime.getMinutes() + 15); // Token expires in 15 minutes
+
+    // // Store the token and expiration time in DynamoDB against the user's email
+    // await dynamoDB.put({
+    //   TableName: EMPLOYEES_TABLE,
+    //   Item: {
+    //     email,
+    //     token,
+    //     expiresAt: expirationTime.getTime(), // Store expiration time in milliseconds
+    //   },
+    // }).promise();
+
+    await dynamoDbClient.send(new PutCommand({
+      TableName: EMPLOYEES_TABLE,
+      Item: {
+        userId: userId,
+        email: email,
+        token: token,
+        expiresAt: expirationTime.getTime(),
+      },
+    }));
+
+
+    // Send email with the token
+    await ses.sendEmail({
+      Source: 'kj.me.cd@gmail.com',
+      Destination: {
+        ToAddresses: [email],
+      },
+      Message: {
+        Subject: {
+          Data: 'Password Reset Request',
+        },
+        Body: {
+          Text: {
+            Data: `Your password reset token is: ${token}`,
+          },
+        },
+      },
+    }).promise();
+
+    // Return success response
+    res.status(200).json({ message: 'Password reset token sent successfully via email' });
+  } catch (error) {
+    console.error('Error:', error);
+    // Return error response
+    res.status(500).json({ message: 'Error processing forgot password request' });
+  }
+});
+
+
+// Route for comparing the token
+app.post('/api/users/compare-token', async (req, res) => {
+  try {
+    const { email, token } = req.body;
+    // Retrieve the token and expiration time from DynamoDB based on the user's email
+    const data = await dynamoDB.get({
+      TableName: EMPLOYEES_TABLE,
+      Key: { email }
+    }).promise();
+
+    if (!data.Item) {
+      return res.status(400).json({ message: 'Invalid email or token' });
+    }
+
+    const { token: storedToken, expiresAt } = data.Item;
+
+    // Check if the provided token matches the stored token
+    if (token !== storedToken) {
+      return res.status(400).json({ message: 'Invalid email or token' });
+    }
+
+    // Check if the token is expired
+    if (Date.now() > expiresAt) {
+      return res.status(400).json({ message: 'Token has expired' });
+    }
+
+    // Return success response
+    return res.status(200).json({ message: 'Token is valid' });
+  } catch (error) {
+    console.error('Error:', error);
+    // Return error response
+    return res.status(500).json({ message: 'Error comparing token' });
+  }
+});
+
+// Route for resetting the password
+app.post('/api/users/reset-password', async (req, res) => {
+  try {
+    const { email, token, newPassword } = req.body;
+    // Retrieve the token and expiration time from DynamoDB based on the user's email
+    const data = await dynamoDB.get({
+      TableName: EMPLOYEES_TABLE,
+      Key: { email }
+    }).promise();
+
+    if (!data.Item) {
+      return res.status(400).json({ message: 'Invalid email or token' });
+    }
+
+    const { token: storedToken, expiresAt } = data.Item;
+
+    // Check if the provided token matches the stored token
+    if (token !== storedToken) {
+      return res.status(400).json({ message: 'Invalid email or token' });
+    }
+
+    // Check if the token is expired
+    if (Date.now() > expiresAt) {
+      return res.status(400).json({ message: 'Token has expired' });
+    }
+
+    // Hash the new Password
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    // Update the user's password in the database
+
+    await dynamoDB.update({ 
+      TableName: TABLE_NAME,
+      Key: { email },
+      UpdateExpression: 'set password = :p',
+      ExpressionAttributeValues: {
+        ':p': hashedPassword
+      }
+    }).promise();
+
+    // Return success response
+    return res.status(200).json({ message: 'Password updated successfully' });
+  } catch (error) {
+    console.error('Error:', error);
+    // Return error response
+    return res.status(500).json({ message: 'Error resetting password' });
+  }
+});
 
 module.exports.handler = serverless(app);
