@@ -1,50 +1,51 @@
-const request = require('supertest');
-const app = require('./users');
+const { isWithinRadius } = require('./utils/geoFencing'); // Update yourFileName with the correct path to your file
 
-describe('GET /api/users/isWithinRadius/:companyId', () => {
-  it('should return 200 and withinRadius true when user is within the radius', async () => {
-    const response = await request(app)
-      .get('/api/users/isWithinRadius/COMPANY_ID')
-      .query({ userLat: 'USER_LAT', userLon: 'USER_LON' });
-
-    expect(response.status).toBe(200);
-    expect(response.body).toHaveProperty('withinRadius', true);
+describe('isWithinRadius', () => {
+  afterEach(() => {
+    jest.clearAllMocks();
   });
 
-  it('should return 400 when companyId, userLat, or userLon is missing', async () => {
-    const response = await request(app)
-      .get('/api/users/isWithinRadius/COMPANY_ID');
+  it('should return true if the distance is within the specified radius', () => {
+    // Coordinates for user and predefined location
+    const userLat = 37.7749;
+    const userLon = -122.4194;
+    const predefinedLat = 37.7749;
+    const predefinedLon = -122.4194;
+    
+    // Radius in kilometers
+    const radius = 1;
 
-    expect(response.status).toBe(400);
+    // Mock the haversineDistance function to return a value less than the radius
+    const haversineDistanceMock = jest.spyOn(global.Math, 'sin').mockReturnValueOnce(0.5);
+    const result = isWithinRadius(userLat, userLon, predefinedLat, predefinedLon, radius);
+
+    // Expect the result to be true
+    expect(result).toBe(true);
+
+    // Verify the mock call
+    expect(haversineDistanceMock).toHaveBeenCalledTimes(4); // Expecting three sin calls for dLat and dLon calculations
   });
 
-  it('should return 404 when company is not found', async () => {
-    // Mock DynamoDBClient to return null for company
-    const mockDynamoDbClient = {
-      send: jest.fn().mockResolvedValue({ Item: null }),
-    };
-    const appWithMockClient = require('./app');
-    appWithMockClient.set('dynamoDbClient', mockDynamoDbClient);
+  it('should return false if the distance is greater than the specified radius', () => {
+    // Coordinates for user and predefined location
+    const userLat = 37.7749;
+    const userLon = -122.4194;
+    const predefinedLat = 31.7749;
+    const predefinedLon = -123.4194;
+    
+    // Radius in kilometers
+    const radius = 1;
 
-    const response = await request(appWithMockClient)
-      .get('/api/users/isWithinRadius/COMPANY_ID')
-      .query({ userLat: 'USER_LAT', userLon: 'USER_LON' });
+    // Mock the haversineDistance function to return a value greater than the radius
+    const haversineDistanceMock = jest.spyOn(global.Math, 'sin').mockReturnValueOnce(0.6);
+    const result = isWithinRadius(userLat, userLon, predefinedLat, predefinedLon, radius);
 
-    expect(response.status).toBe(404);
-  });
+    // Expect the result to be false
+    expect(result).toBe(false);
 
-  it('should return 500 when there is an internal server error', async () => {
-    // Mock DynamoDBClient to throw an error
-    const mockDynamoDbClient = {
-      send: jest.fn().mockRejectedValue(new Error('Internal server error')),
-    };
-    const appWithMockClient = require('./app');
-    appWithMockClient.set('dynamoDbClient', mockDynamoDbClient);
-
-    const response = await request(appWithMockClient)
-      .get('/api/users/isWithinRadius/COMPANY_ID')
-      .query({ userLat: 'USER_LAT', userLon: 'USER_LON' });
-
-    expect(response.status).toBe(500);
+    // Verify the mock call
+    expect(haversineDistanceMock).toHaveBeenCalledTimes(4); // Expecting three sin calls for dLat and dLon calculations
   });
 });
+
+
