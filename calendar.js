@@ -12,8 +12,7 @@ const express = require("express");
 const serverless = require("serverless-http");
 const { authenticateToken } = require("./middlewares/authMiddleware");
 const { rolesMiddleware } = require("./middlewares/rolesMiddleware");
-const errors = require('./errors');
-
+const errors = require('./config/errors');
 
 const app = express();
 

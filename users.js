@@ -80,6 +80,7 @@ app.get("/api/users/isWithinRadius/:companyId", rolesMiddleware(["admin","hr","e
     res.status(500).json({ error: errors.userWithinRadiusError });
   }
 });
+
 app.post("/api/users/attendance/mark", rolesMiddleware(["hr","employee"]), async function (req, res) {
   try {
     const { employeeId, companyId, time, isCheckedIn, isCheckedOut, isWorkFromHome } = req.body;
@@ -1571,7 +1572,5 @@ app.post("/api/users/login", async function (req, res) {
     return res.status(500).json({ error: errors.getUsersError });
   }
 });
-
-
 
 module.exports.handler = serverless(app);
