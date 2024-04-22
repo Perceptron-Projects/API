@@ -198,8 +198,6 @@ resources:
           Rules:
             - ObjectOwnership: BucketOwnerPreferred
 
-
-        
         CorsConfiguration:
           CorsRules:
             - AllowedOrigins:

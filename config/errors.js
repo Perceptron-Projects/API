@@ -32,5 +32,6 @@ module.exports = {
   updateCompanyError: 'Could not update company',
   updateUserError: 'Could not update user',
   userNotFound: 'Could not find user with provided "userId"',
-  userWithinRadiusError: 'Error checking if the user is within the radius'
+  userWithinRadiusError: 'Error checking if the user is within the radius',
+  imageUploadError: 'Error uploading image',
 };

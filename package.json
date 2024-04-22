@@ -14,5 +14,12 @@
     "jsonwebtoken": "^9.0.2",
     "serverless-http": "^3.2.0",
     "serverless-offline": "^13.3.2"
+  },
+  "scripts": {
+    "test": "jest"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "supertest": "^6.3.4"
   }
 }

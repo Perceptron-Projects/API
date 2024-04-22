@@ -28,6 +28,9 @@ jobs:
       - name: Npm install
         run: npm install
 
+      - name: Run tests
+        run: npm test
+
       - name: Serverless deploy
         uses: serverless/github-action@master
         with:
