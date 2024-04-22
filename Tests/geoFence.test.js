@@ -1,4 +1,4 @@
-const { isWithinRadius } = require('./utils/geoFencing'); // Update yourFileName with the correct path to your file
+const { isWithinRadius } = require('../utils/geoFencing'); // Update yourFileName with the correct path to your file
 
 describe('isWithinRadius', () => {
   afterEach(() => {
