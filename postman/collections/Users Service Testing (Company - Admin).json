@@ -1,0 +1,282 @@
+{
+	"info": {
+		"_postman_id": "1981142b-56d9-4fd0-a539-0e9bb487ba05",
+		"name": "Users Service Testing (Company - Admin)",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_uid": "34554041-1981142b-56d9-4fd0-a539-0e9bb487ba05"
+	},
+	"item": [
+		{
+			"name": "login",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"id": "718d70e8-1012-4108-af7c-2ad9ca653a3c",
+						"exec": [
+							"pm.test(\"Status code is 200\", function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"pm.test(\"Response should be valid JSON\", function () {",
+							"    pm.response.to.be.json;",
+							"});",
+							"",
+							"pm.test(\"Token is present\", function () {",
+							"    pm.expect(pm.response.json()).to.have.property('token');",
+							"});",
+							"",
+							"pm.test(\"Expires in 86400000 seconds\", function () {",
+							"    pm.expect(pm.response.json().expiresIn).to.eql(86400000);",
+							"});",
+							"pm.environment.set(\"companyAdminAuthToken\", pm.response.json().token);",
+							"",
+							"",
+							""
+						],
+						"type": "text/javascript",
+						"packages": {}
+					}
+				}
+			],
+			"id": "ef12f545-5358-4853-8b7c-e0ec749eaab6",
+			"protocolProfileBehavior": {
+				"disableBodyPruning": true
+			},
+			"request": {
+				"auth": {
+					"type": "noauth"
+				},
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"email\":\"{{testCompanyAdminEmail}}\",\n    \"password\":\"admin123\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{serverless-deployment-url}}/api/users/login",
+					"host": [
+						"{{serverless-deployment-url}}"
+					],
+					"path": [
+						"api",
+						"users",
+						"login"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "create-branch",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"id": "60abf3af-dff5-4139-b80a-5194ea8e7dd4",
+						"exec": [
+							"// Test for a successful response",
+							"pm.test(\"Status code is 200\", function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"// Define the expected response for the branch",
+							"const expectedBranch = {",
+							"    \"branchImageUrl\": \"https://media.istockphoto.com/id/908578348/vector/business-building-illustration.jpg?s=612x612&w=0&k=20&c=thg6Bom79dCRo8pMV3fo7p-8b7m1p-EdLZZPKYpXYvg=\",",
+							"    \"branchId\": \"65945d6b-20e4-4db9-a29d-052a8651453b\",",
+							"    \"radiusFromCenterOfBranch\": \"50\",",
+							"    \"branchName\": \"Test Branch\",",
+							"    \"location\": {",
+							"        \"longitude\": \"-122.4194\",",
+							"        \"latitude\": \"37.7749\"",
+							"    },",
+							"    \"branchEmail\": \"testbranch@example.com\",",
+							"    \"contactNo\": \"1234567890\"",
+							"};",
+							"",
+							"// Test to check if the branch is added correctly",
+							"pm.test(\"Branch is added correctly\", function () {",
+							"    const responseBody = pm.response.json();",
+							"    pm.expect(responseBody.branches).to.be.an(\"array\").that.includes.deep.members([expectedBranch]);",
+							"});",
+							"",
+							"// Define the expected response for the company",
+							"const expectedCompany = {",
+							"    \"companyId\": pm.globals.get(\"testCompanyId\"),",
+							"    \"companyImageUrl\": \"https://media.istockphoto.com/id/908578348/vector/business-building-illustration.jpg?s=612x612&w=0&k=20&c=thg6Bom79dCRo8pMV3fo7p-8b7m1p-EdLZZPKYpXYvg=\",",
+							"    \"companyName\": \"testCompanyName\",",
+							"    \"contactNo\": \"1234567890\",",
+							"    \"companyEmail\": \"testCompany@gmail.com\"",
+							"};",
+							"",
+							"// Test to check if the company is updated correctly",
+							"pm.test(\"Company is updated correctly\", function () {",
+							"    const responseBody = pm.response.json();",
+							"    pm.expect(responseBody).to.include(expectedCompany);",
+							"});",
+							""
+						],
+						"type": "text/javascript",
+						"packages": {}
+					}
+				}
+			],
+			"id": "24fccae6-dc28-413e-ac13-2bd5d909bc8d",
+			"protocolProfileBehavior": {
+				"disableBodyPruning": true
+			},
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"branchName\": \"Test Branch\",\n    \"companyId\": \"{{testCompanyId}}\",\n    \"contactNo\": \"1234567890\",\n    \"email\": \"testbranch@example.com\",\n    \"latitude\": \"37.7749\",\n    \"longitude\": \"-122.4194\",\n    \"radiusFromCenterOfBranch\": \"50\"\n}\n",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{serverless-deployment-url}}/api/users/company/create-branch",
+					"host": [
+						"{{serverless-deployment-url}}"
+					],
+					"path": [
+						"api",
+						"users",
+						"company",
+						"create-branch"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "create-branchAdmin",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"id": "60abf3af-dff5-4139-b80a-5194ea8e7dd4",
+						"exec": [
+							"// Test for a successful response",
+							"pm.test(\"Status code is 200\", function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"// Test for userId",
+							"pm.test(\"Response has userId\", function () {",
+							"    pm.expect(pm.response.json()).to.have.property(\"userId\").to.be.a('string');",
+							"});",
+							"",
+							"// Test for companyId",
+							"pm.test(\"Response has companyId\", function () {",
+							"    pm.expect(pm.response.json()).to.have.property(\"companyId\",pm.variables.get(\"testCompanyId\"));",
+							"});",
+							"",
+							"// Test for contactNo",
+							"pm.test(\"Response has contactNo\", function () {",
+							"    pm.expect(pm.response.json()).to.have.property(\"contactNo\", \"1234567890\");",
+							"});",
+							"",
+							"// Test for role",
+							"pm.test(\"Response has role\", function () {",
+							"    pm.expect(pm.response.json()).to.have.property(\"role\", \"branchadmin\");",
+							"});",
+							"",
+							"// Test for email",
+							"pm.test(\"Response has email\", function () {",
+							"    pm.expect(pm.response.json()).to.have.property(\"email\", pm.variables.get(\"testBranchAdminEmail\"));",
+							"});",
+							"",
+							"",
+							"",
+							"// Test for firstName",
+							"pm.test(\"Response has firstName\", function () {",
+							"    pm.expect(pm.response.json()).to.have.property(\"firstName\", \"John\");",
+							"});",
+							"",
+							"// Test for lastName",
+							"pm.test(\"Response has lastName\", function () {",
+							"    pm.expect(pm.response.json()).to.have.property(\"lastName\", \"Doe\");",
+							"});",
+							"",
+							""
+						],
+						"type": "text/javascript",
+						"packages": {}
+					}
+				}
+			],
+			"id": "831f3aa2-5fc5-4bed-9fbb-49c15fc8d154",
+			"protocolProfileBehavior": {
+				"disableBodyPruning": true
+			},
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"companyId\": \"{{testCompanyId}}\",\n  \"contactNo\": \"1234567890\",\n  \"dateOfBirth\": \"1990-01-01\",\n  \"designation\": \"branchadmin\",\n  \"branchName\": \"Branch 1\",\n  \"email\": \"{{testBranchAdminEmail}}\",\n  \"joiningDate\": \"2022-01-01\",\n  \"firstName\": \"John\",\n  \"lastName\": \"Doe\",\n  \"username\": \"johndoe\",\n  \"branchId\": \"{{testBranchId}}\"\n}\n",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{serverless-deployment-url}}/api/users/create-branch-admin",
+					"host": [
+						"{{serverless-deployment-url}}"
+					],
+					"path": [
+						"api",
+						"users",
+						"create-branch-admin"
+					]
+				}
+			},
+			"response": []
+		}
+	],
+	"auth": {
+		"type": "bearer",
+		"bearer": [
+			{
+				"key": "token",
+				"value": "{{companyAdminAuthToken}}",
+				"type": "string"
+			}
+		]
+	},
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"id": "3d9c3e3c-5044-4a8f-9424-86be511820a2",
+				"type": "text/javascript",
+				"packages": {},
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"id": "8eecd6b2-f93c-44b3-9fc3-f7fdaf7e2236",
+				"type": "text/javascript",
+				"packages": {},
+				"exec": [
+					""
+				]
+			}
+		}
+	]
+}

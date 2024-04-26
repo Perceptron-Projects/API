@@ -1,9 +1,9 @@
 {
 	"info": {
-		"_postman_id": "1981142b-56d9-4fd0-a539-0e9bb487ba05",
-		"name": "Users Service Testing",
+		"_postman_id": "a8acd1d5-e93d-4d08-94b7-cd9e3f64f6af",
+		"name": "Users Service Testing (Branch - Admin)",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-		"_uid": "34554041-1981142b-56d9-4fd0-a539-0e9bb487ba05"
+		"_uid": "34554041-a8acd1d5-e93d-4d08-94b7-cd9e3f64f6af"
 	},
 	"item": [
 		{
@@ -12,7 +12,7 @@
 				{
 					"listen": "test",
 					"script": {
-						"id": "718d70e8-1012-4108-af7c-2ad9ca653a3c",
+						"id": "75828eb3-efab-4732-87b2-8fa20b7a2ebb",
 						"exec": [
 							"pm.test(\"Status code is 200\", function () {",
 							"    pm.response.to.have.status(200);",
@@ -29,7 +29,7 @@
 							"pm.test(\"Expires in 86400000 seconds\", function () {",
 							"    pm.expect(pm.response.json().expiresIn).to.eql(86400000);",
 							"});",
-							"pm.environment.set(\"authToken\", pm.response.json().token);",
+							"pm.environment.set(\"branchAdminAuthToken\", pm.response.json().token);",
 							"",
 							"",
 							""
@@ -39,7 +39,7 @@
 					}
 				}
 			],
-			"id": "ef12f545-5358-4853-8b7c-e0ec749eaab6",
+			"id": "48806a4b-306f-4876-a0ec-5a3c9d59c5b6",
 			"protocolProfileBehavior": {
 				"disableBodyPruning": true
 			},
@@ -51,7 +51,7 @@
 				"header": [],
 				"body": {
 					"mode": "raw",
-					"raw": "{\n    \"email\":\"postmancompanyadmin@gmail.com\",\n    \"password\":\"admin123\"\n}",
+					"raw": "{\n    \"email\":\"{{testBranchAdminEmail}}\",\n    \"password\":\"admin123\"\n}",
 					"options": {
 						"raw": {
 							"language": "json"
@@ -73,27 +73,25 @@
 			"response": []
 		},
 		{
-			"name": "create-user(admin/branchadmin)",
+			"name": "create-employee",
 			"event": [
 				{
 					"listen": "test",
 					"script": {
-						"id": "60abf3af-dff5-4139-b80a-5194ea8e7dd4",
+						"id": "60f5f231-7bf2-4695-b23f-2496fbeb6b3f",
 						"exec": [
 							"pm.test(\"Response should have the correct values\", function () {",
 							"    const responseBody = pm.response.json();",
 							"    ",
-							"    pm.expect(responseBody.companyId).to.eql(\"bda9abba-2ffd-45e8-a252-a65d691f77b4\");",
 							"    pm.expect(responseBody.contactNo).to.eql(\"1234567890\");",
 							"    pm.expect(responseBody.dateOfBirth).to.eql(\"1990-01-01\");",
-							"    pm.expect(responseBody.role).to.eql(\"admin\");",
+							"    pm.expect(responseBody.role).to.eql(\"employee\");",
 							"    pm.expect(responseBody.branchName).to.eql(\"Branch 1\");",
 							"    pm.expect(responseBody.email).to.eql(\"john.doe@example.com\");",
 							"    pm.expect(responseBody.joiningDate).to.eql(\"2022-01-01\");",
 							"    pm.expect(responseBody.firstName).to.eql(\"John\");",
 							"    pm.expect(responseBody.lastName).to.eql(\"Doe\");",
 							"    pm.expect(responseBody.username).to.eql(\"johndoe\");",
-							"    pm.expect(responseBody.branchId).to.eql(\"456\");",
 							"});",
 							""
 						],
@@ -102,7 +100,7 @@
 					}
 				}
 			],
-			"id": "831f3aa2-5fc5-4bed-9fbb-49c15fc8d154",
+			"id": "f393683f-6b3e-4ac9-b2fa-ffcf06d8dd25",
 			"protocolProfileBehavior": {
 				"disableBodyPruning": true
 			},
@@ -111,7 +109,7 @@
 				"header": [],
 				"body": {
 					"mode": "raw",
-					"raw": "{\n  \"companyId\": \"bda9abba-2ffd-45e8-a252-a65d691f77b4\",\n  \"contactNo\": \"1234567890\",\n  \"dateOfBirth\": \"1990-01-01\",\n  \"designation\": \"admin\",\n  \"branchName\": \"Branch 1\",\n  \"email\": \"john.doe@example.com\",\n  \"joiningDate\": \"2022-01-01\",\n  \"firstName\": \"John\",\n  \"lastName\": \"Doe\",\n  \"username\": \"johndoe\",\n  \"branchId\": \"456\"\n}\n",
+					"raw": "{\n  \"companyId\": \"{{testCompanyId}}\",\n  \"contactNo\": \"1234567890\",\n  \"dateOfBirth\": \"1990-01-01\",\n  \"designation\": \"employee\",\n  \"branchName\": \"Branch 1\",\n  \"email\": \"john.doe@example.com\",\n  \"joiningDate\": \"2022-01-01\",\n  \"firstName\": \"John\",\n  \"lastName\": \"Doe\",\n  \"username\": \"johndoe\",\n  \"branchId\": \"{{testBranchId}}\"\n}\n",
 					"options": {
 						"raw": {
 							"language": "json"
@@ -138,7 +136,7 @@
 		"bearer": [
 			{
 				"key": "token",
-				"value": "{{authToken}}",
+				"value": "{{branchAdminAuthToken}}",
 				"type": "string"
 			}
 		]
@@ -147,7 +145,7 @@
 		{
 			"listen": "prerequest",
 			"script": {
-				"id": "61403f95-4cd9-42f1-9494-dfb8918c8bd2",
+				"id": "7901a3c2-efbe-4b38-b222-bcba66d0f7cd",
 				"type": "text/javascript",
 				"packages": {},
 				"exec": [
@@ -158,21 +156,13 @@
 		{
 			"listen": "test",
 			"script": {
-				"id": "c20b93db-6ff7-4a96-90d2-7bf9a31ee95b",
+				"id": "976ee48a-bcbd-4293-a810-24790e7448f3",
 				"type": "text/javascript",
 				"packages": {},
 				"exec": [
 					""
 				]
 			}
-		}
-	],
-	"variable": [
-		{
-			"id": "db448a3f-ca6c-41bc-bb69-b54f4779b8cc",
-			"key": "serverless-deployment-url",
-			"value": "https://xu2lsv7qk4.execute-api.us-east-1.amazonaws.com",
-			"type": "string"
 		}
 	]
 }
