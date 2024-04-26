@@ -73,91 +73,6 @@
 			"response": []
 		},
 		{
-			"name": "create-admin",
-			"event": [
-				{
-					"listen": "test",
-					"script": {
-						"id": "a3f66f38-93e6-44ef-8b55-ec3f4cb1a65d",
-						"exec": [
-							"// Test for a successful response",
-							"pm.test(\"Status code is 200\", function () {",
-							"    pm.response.to.have.status(200);",
-							"});",
-							"",
-							"pm.test(\"Response has userId\", function () {",
-							"    pm.expect(pm.response.json()).to.have.property(\"userId\").to.be.a('string');",
-							"});",
-							"",
-							"pm.test(\"Response has firstName\", function () {",
-							"    pm.expect(pm.response.json()).to.have.property(\"firstName\",pm.variables.get(\"testCompanyAdminName\"));",
-							"});",
-							"",
-							"pm.test(\"Response has lastName\", function () {",
-							"    pm.expect(pm.response.json()).to.have.property(\"lastName\", \"test-lastname\");",
-							"});",
-							"",
-							"pm.test(\"Response has email\", function () {",
-							"    pm.expect(pm.response.json()).to.have.property(\"email\", pm.variables.get(\"testCompanyAdminEmail\"));",
-							"});",
-							"",
-							"pm.test(\"Response has contactNo\", function () {",
-							"    pm.expect(pm.response.json()).to.have.property(\"contactNo\", \"1234567890\");",
-							"});",
-							"",
-							"pm.test(\"Response has companyId\", function () {",
-							"    pm.expect(pm.response.json()).to.have.property(\"companyId\", pm.variables.get(\"testCompanyId\"));",
-							"});",
-							"",
-							"pm.test(\"Response has companyName\", function () {",
-							"    pm.expect(pm.response.json()).to.have.property(\"companyName\",  pm.variables.get(\"testCompanyName\"));",
-							"});",
-							"",
-							"pm.test(\"Response has role\", function () {",
-							"    pm.expect(pm.response.json()).to.have.property(\"role\", \"admin\");",
-							"});",
-							"",
-							"pm.test(\"Response has adminImageUrl\", function () {",
-							"    pm.expect(pm.response.json()).to.have.property(\"adminImageUrl\", \"\");",
-							"});",
-							""
-						],
-						"type": "text/javascript",
-						"packages": {}
-					}
-				}
-			],
-			"id": "b26bbecf-4476-4912-88e2-dfbc7cc9100e",
-			"protocolProfileBehavior": {
-				"disableBodyPruning": true
-			},
-			"request": {
-				"method": "POST",
-				"header": [],
-				"body": {
-					"mode": "raw",
-					"raw": "{\n    \"firstName\": \"{{testCompanyAdminName}}\",\n    \"lastName\": \"test-lastname\",\n    \"companyData\": {\n        \"companyId\": \"{{testCompanyId}}\",\n        \"companyName\": \"{{testCompanyName}}\"\n    },\n    \"email\": \"{{testCompanyAdminEmail}}\",\n    \"contactNo\": \"1234567890\"\n}\n",
-					"options": {
-						"raw": {
-							"language": "json"
-						}
-					}
-				},
-				"url": {
-					"raw": "{{serverless-deployment-url}}/api/users/create-admin",
-					"host": [
-						"{{serverless-deployment-url}}"
-					],
-					"path": [
-						"api",
-						"users",
-						"create-admin"
-					]
-				}
-			},
-			"response": []
-		},
-		{
 			"name": "create-company",
 			"event": [
 				{
@@ -240,6 +155,91 @@
 						"users",
 						"company",
 						"create"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "create-admin",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"id": "a3f66f38-93e6-44ef-8b55-ec3f4cb1a65d",
+						"exec": [
+							"// Test for a successful response",
+							"pm.test(\"Status code is 200\", function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"pm.test(\"Response has userId\", function () {",
+							"    pm.expect(pm.response.json()).to.have.property(\"userId\").to.be.a('string');",
+							"});",
+							"",
+							"pm.test(\"Response has firstName\", function () {",
+							"    pm.expect(pm.response.json()).to.have.property(\"firstName\",pm.variables.get(\"testCompanyAdminName\"));",
+							"});",
+							"",
+							"pm.test(\"Response has lastName\", function () {",
+							"    pm.expect(pm.response.json()).to.have.property(\"lastName\", \"test-lastname\");",
+							"});",
+							"",
+							"pm.test(\"Response has email\", function () {",
+							"    pm.expect(pm.response.json()).to.have.property(\"email\", pm.variables.get(\"testCompanyAdminEmail\"));",
+							"});",
+							"",
+							"pm.test(\"Response has contactNo\", function () {",
+							"    pm.expect(pm.response.json()).to.have.property(\"contactNo\", \"1234567890\");",
+							"});",
+							"",
+							"pm.test(\"Response has companyId\", function () {",
+							"    pm.expect(pm.response.json()).to.have.property(\"companyId\", pm.variables.get(\"testCompanyId\"));",
+							"});",
+							"",
+							"pm.test(\"Response has companyName\", function () {",
+							"    pm.expect(pm.response.json()).to.have.property(\"companyName\",  pm.variables.get(\"testCompanyName\"));",
+							"});",
+							"",
+							"pm.test(\"Response has role\", function () {",
+							"    pm.expect(pm.response.json()).to.have.property(\"role\", \"admin\");",
+							"});",
+							"",
+							"pm.test(\"Response has adminImageUrl\", function () {",
+							"    pm.expect(pm.response.json()).to.have.property(\"adminImageUrl\", \"\");",
+							"});",
+							""
+						],
+						"type": "text/javascript",
+						"packages": {}
+					}
+				}
+			],
+			"id": "b26bbecf-4476-4912-88e2-dfbc7cc9100e",
+			"protocolProfileBehavior": {
+				"disableBodyPruning": true
+			},
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"firstName\": \"{{testCompanyAdminName}}\",\n    \"lastName\": \"test-lastname\",\n    \"companyData\": {\n        \"companyId\": \"{{testCompanyId}}\",\n        \"companyName\": \"{{testCompanyName}}\"\n    },\n    \"email\": \"{{testCompanyAdminEmail}}\",\n    \"contactNo\": \"1234567890\"\n}\n",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{serverless-deployment-url}}/api/users/create-admin",
+					"host": [
+						"{{serverless-deployment-url}}"
+					],
+					"path": [
+						"api",
+						"users",
+						"create-admin"
 					]
 				}
 			},
