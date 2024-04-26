@@ -19,8 +19,12 @@ const { isWithinRadius } = require("./utils/geoFencing");
 const { uploadImage } = require("./utils/imageUpload");
 const urls = require("./config/urls");
 const messages = require('./config/messages');
+const cors = require('cors');
+
+
 
 const app = express();
+
 
 const ADMINS_TABLE = process.env.ADMINS_TABLE;
 const EMPLOYEES_TABLE = process.env.EMPLOYEES_TABLE;
@@ -31,6 +35,8 @@ const companyDefaultImage = urls.companyDefaultImage;
 
 const client = new DynamoDBClient();
 const dynamoDbClient = DynamoDBDocumentClient.from(client);
+
+app.use(cors());
 
 app.use(express.json({ limit: "50mb" }));
 
