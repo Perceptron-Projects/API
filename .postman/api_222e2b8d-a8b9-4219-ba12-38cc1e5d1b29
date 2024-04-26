@@ -9,7 +9,9 @@ id = 222e2b8d-a8b9-4219-ba12-38cc1e5d1b29
 
 [config.relations.collections]
 rootDirectory = postman/collections
-files[] = {"id":"34554041-1981142b-56d9-4fd0-a539-0e9bb487ba05","path":"Users Service Testing.json","metaData":{}}
+files[] = {"id":"34554041-a8acd1d5-e93d-4d08-94b7-cd9e3f64f6af","path":"Users Service Testing (Branch - Admin).json","metaData":{}}
+files[] = {"id":"34554041-1981142b-56d9-4fd0-a539-0e9bb487ba05","path":"Users Service Testing (Company - Admin).json","metaData":{}}
+files[] = {"id":"34554041-3ec8b6f5-8bbf-4f9a-ae14-79837b721042","path":"Users Service Testing (Super - Admin).json","metaData":{}}
 
 [config.relations.collections.metaData]
 
