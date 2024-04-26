@@ -7,7 +7,7 @@
 	},
 	"item": [
 		{
-			"name": "superadmin-login",
+			"name": "login",
 			"event": [
 				{
 					"listen": "test",
@@ -26,17 +26,12 @@
 							"    pm.expect(pm.response.json()).to.have.property('token');",
 							"});",
 							"",
-							"pm.test(\"Role is 'superadmin'\", function () {",
-							"    pm.expect(pm.response.json().role).to.eql(['superadmin']);",
-							"});",
-							"",
-							"pm.test(\"User ID is '123'\", function () {",
-							"    pm.expect(pm.response.json().userId).to.eql('123');",
-							"});",
-							"",
 							"pm.test(\"Expires in 86400000 seconds\", function () {",
 							"    pm.expect(pm.response.json().expiresIn).to.eql(86400000);",
 							"});",
+							"pm.environment.set(\"authToken\", pm.response.json().token);",
+							"",
+							"",
 							""
 						],
 						"type": "text/javascript",
@@ -56,7 +51,7 @@
 				"header": [],
 				"body": {
 					"mode": "raw",
-					"raw": "{\n    \"email\":\"superadmin@gmail.com\",\n    \"password\":\"superadmin123\"\n}",
+					"raw": "{\n    \"email\":\"postmancompanyadmin@gmail.com\",\n    \"password\":\"admin123\"\n}",
 					"options": {
 						"raw": {
 							"language": "json"
@@ -64,12 +59,10 @@
 					}
 				},
 				"url": {
-					"raw": "http://localhost:3000/api/users/login",
-					"protocol": "http",
+					"raw": "{{serverless-deployment-url}}/api/users/login",
 					"host": [
-						"localhost"
+						"{{serverless-deployment-url}}"
 					],
-					"port": "3000",
 					"path": [
 						"api",
 						"users",
@@ -78,16 +71,83 @@
 				}
 			},
 			"response": []
+		},
+		{
+			"name": "create-user(admin/branchadmin)",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"id": "60abf3af-dff5-4139-b80a-5194ea8e7dd4",
+						"exec": [
+							"pm.test(\"Response should have the correct values\", function () {",
+							"    const responseBody = pm.response.json();",
+							"    ",
+							"    pm.expect(responseBody.companyId).to.eql(\"bda9abba-2ffd-45e8-a252-a65d691f77b4\");",
+							"    pm.expect(responseBody.contactNo).to.eql(\"1234567890\");",
+							"    pm.expect(responseBody.dateOfBirth).to.eql(\"1990-01-01\");",
+							"    pm.expect(responseBody.role).to.eql(\"admin\");",
+							"    pm.expect(responseBody.branchName).to.eql(\"Branch 1\");",
+							"    pm.expect(responseBody.email).to.eql(\"john.doe@example.com\");",
+							"    pm.expect(responseBody.joiningDate).to.eql(\"2022-01-01\");",
+							"    pm.expect(responseBody.firstName).to.eql(\"John\");",
+							"    pm.expect(responseBody.lastName).to.eql(\"Doe\");",
+							"    pm.expect(responseBody.username).to.eql(\"johndoe\");",
+							"    pm.expect(responseBody.branchId).to.eql(\"456\");",
+							"});",
+							""
+						],
+						"type": "text/javascript",
+						"packages": {}
+					}
+				}
+			],
+			"id": "831f3aa2-5fc5-4bed-9fbb-49c15fc8d154",
+			"protocolProfileBehavior": {
+				"disableBodyPruning": true
+			},
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"companyId\": \"bda9abba-2ffd-45e8-a252-a65d691f77b4\",\n  \"contactNo\": \"1234567890\",\n  \"dateOfBirth\": \"1990-01-01\",\n  \"designation\": \"admin\",\n  \"branchName\": \"Branch 1\",\n  \"email\": \"john.doe@example.com\",\n  \"joiningDate\": \"2022-01-01\",\n  \"firstName\": \"John\",\n  \"lastName\": \"Doe\",\n  \"username\": \"johndoe\",\n  \"branchId\": \"456\"\n}\n",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{serverless-deployment-url}}/api/users/create-user",
+					"host": [
+						"{{serverless-deployment-url}}"
+					],
+					"path": [
+						"api",
+						"users",
+						"create-user"
+					]
+				}
+			},
+			"response": []
 		}
 	],
 	"auth": {
-		"type": "bearer"
+		"type": "bearer",
+		"bearer": [
+			{
+				"key": "token",
+				"value": "{{authToken}}",
+				"type": "string"
+			}
+		]
 	},
 	"event": [
 		{
 			"listen": "prerequest",
 			"script": {
-				"id": "0f3ccf08-3875-4e7d-a346-656bb5a2a91f",
+				"id": "61403f95-4cd9-42f1-9494-dfb8918c8bd2",
 				"type": "text/javascript",
 				"packages": {},
 				"exec": [
@@ -98,13 +158,21 @@
 		{
 			"listen": "test",
 			"script": {
-				"id": "eb65e529-23da-450f-88fc-d775e976a6c2",
+				"id": "c20b93db-6ff7-4a96-90d2-7bf9a31ee95b",
 				"type": "text/javascript",
 				"packages": {},
 				"exec": [
 					""
 				]
 			}
+		}
+	],
+	"variable": [
+		{
+			"id": "db448a3f-ca6c-41bc-bb69-b54f4779b8cc",
+			"key": "serverless-deployment-url",
+			"value": "https://xu2lsv7qk4.execute-api.us-east-1.amazonaws.com",
+			"type": "string"
 		}
 	]
 }
