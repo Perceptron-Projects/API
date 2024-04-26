@@ -64,12 +64,10 @@
 					}
 				},
 				"url": {
-					"raw": "http://localhost:3000/api/users/login",
-					"protocol": "http",
+					"raw": "{{serverless-deployment-url}}/api/users/login",
 					"host": [
-						"localhost"
+						"{{serverless-deployment-url}}"
 					],
-					"port": "3000",
 					"path": [
 						"api",
 						"users",
@@ -87,7 +85,7 @@
 		{
 			"listen": "prerequest",
 			"script": {
-				"id": "0f3ccf08-3875-4e7d-a346-656bb5a2a91f",
+				"id": "260aaae6-e91c-4257-8400-86c8bfa110e8",
 				"type": "text/javascript",
 				"packages": {},
 				"exec": [
@@ -98,13 +96,21 @@
 		{
 			"listen": "test",
 			"script": {
-				"id": "eb65e529-23da-450f-88fc-d775e976a6c2",
+				"id": "ccf89538-5ce9-4643-86f2-696948f82db9",
 				"type": "text/javascript",
 				"packages": {},
 				"exec": [
 					""
 				]
 			}
+		}
+	],
+	"variable": [
+		{
+			"id": "ec2b0003-bbbc-4f72-9b7f-c451a215f321",
+			"key": "serverless-deployment-url",
+			"value": "https://xu2lsv7qk4.execute-api.us-east-1.amazonaws.com",
+			"type": "string"
 		}
 	]
 }
