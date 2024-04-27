@@ -14,5 +14,7 @@ files[] = {"id":"34554041-a8acd1d5-e93d-4d08-94b7-cd9e3f64f6af","path":"Users Se
 [config.relations.collections.metaData]
 
 [config.relations.apiDefinition]
+files[] = {"path":"postman/collections/Users Service Testing.json","metaData":{}}
 
 [config.relations.apiDefinition.metaData]
+type = openapi:3
