@@ -177,8 +177,16 @@
 							"    pm.expect(pm.response.json()).to.have.property(\"userId\").to.be.a('string');",
 							"});",
 							"",
-							"pm.test(\"Response has firstName\", function () {",
+							"pm.test(\"Response has firstName globals\", function () {",
 							"    pm.expect(pm.response.json()).to.have.property(\"firstName\",pm.globals.get(\"testCompanyAdminName\"));",
+							"});",
+							"",
+							"pm.test(\"Response has firstName collectionVariables\", function () {",
+							"    pm.expect(pm.response.json()).to.have.property(\"firstName\",pm.collectionVariables.get(\"testCompanyAdminName\"));",
+							"});",
+							"",
+							"pm.test(\"Response has firstName variable\", function () {",
+							"    pm.expect(pm.response.json()).to.have.property(\"firstName\",pm.variables.get(\"testCompanyAdminName\"));",
 							"});",
 							"",
 							"pm.test(\"Response has lastName\", function () {",
@@ -672,7 +680,7 @@
 	],
 	"variable": [
 		{
-			"id": "16142c47-dd1b-45c2-ab8b-86fc357523bd",
+			"id": "f89cdf48-73c0-455f-9939-26d3f4a309ef",
 			"key": "serverless-deployment-url",
 			"value": "https://xu2lsv7qk4.execute-api.us-east-1.amazonaws.com",
 			"type": "string"
