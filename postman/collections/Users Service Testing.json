@@ -660,7 +660,7 @@
 		{
 			"listen": "prerequest",
 			"script": {
-				"id": "010da39c-4e8b-4b06-a355-f740b4355ce6",
+				"id": "212a173a-d2fc-4560-bb45-fb7c3a3cc23e",
 				"type": "text/javascript",
 				"packages": {},
 				"exec": [
@@ -671,7 +671,7 @@
 		{
 			"listen": "test",
 			"script": {
-				"id": "5fbcfb00-54aa-4858-a7b2-79305226e92b",
+				"id": "05101b90-b797-46ec-ad85-8a6193b75841",
 				"type": "text/javascript",
 				"packages": {},
 				"exec": [
@@ -682,9 +682,9 @@
 	],
 	"variable": [
 		{
-			"id": "74e55fd6-8b37-47a0-b21c-623c030e8e66",
+			"id": "f0ef71c1-8599-4f40-9aa4-63b0d6fa40d2",
 			"key": "serverless-deployment-url",
-			"value": "xu2lsv7qk4.execute-api.us-east-1.amazonaws.com",
+			"value": "https://xu2lsv7qk4.execute-api.us-east-1.amazonaws.com",
 			"type": "string"
 		}
 	]
