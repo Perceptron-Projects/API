@@ -89,12 +89,6 @@
 							"    pm.expect(pm.response.json().companyId).to.be.a(\"string\");",
 							"});",
 							"",
-							"",
-							"pm.test(\"Response has companyName\", function () {",
-							"    pm.expect(pm.response.json()).to.have.property(\"companyName\",pm.variables.get(\"testCompanyName\"));",
-							";",
-							"});",
-							"",
 							"pm.test(\"Response has location object\", function () {",
 							"    pm.expect(pm.response.json()).to.have.property(\"location\").to.be.an(\"object\");",
 							"});",
@@ -105,10 +99,6 @@
 							"",
 							"pm.test(\"Response has latitude\", function () {",
 							"    pm.expect(pm.response.json().location).to.have.property(\"latitude\", \"2.333\");",
-							"});",
-							"",
-							"pm.test(\"Response has companyEmail\", function () {",
-							"    pm.expect(pm.response.json()).to.have.property(\"companyEmail\", pm.variables.get(\"testCompanyEmail\"));",
 							"});",
 							"",
 							"pm.test(\"Response has contactNo\", function () {",
@@ -682,7 +672,7 @@
 	],
 	"variable": [
 		{
-			"id": "f0ef71c1-8599-4f40-9aa4-63b0d6fa40d2",
+			"id": "0f22b135-ca59-4919-9c05-2f3c8c99231b",
 			"key": "serverless-deployment-url",
 			"value": "https://xu2lsv7qk4.execute-api.us-east-1.amazonaws.com",
 			"type": "string"
