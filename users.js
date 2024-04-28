@@ -19,8 +19,12 @@ const { isWithinRadius } = require("./utils/geoFencing");
 const { uploadImage } = require("./utils/imageUpload");
 const urls = require("./config/urls");
 const messages = require('./config/messages');
+const cors = require('cors');
+
+
 
 const app = express();
+
 
 const ADMINS_TABLE = process.env.ADMINS_TABLE;
 const EMPLOYEES_TABLE = process.env.EMPLOYEES_TABLE;
@@ -31,6 +35,8 @@ const companyDefaultImage = urls.companyDefaultImage;
 
 const client = new DynamoDBClient();
 const dynamoDbClient = DynamoDBDocumentClient.from(client);
+
+app.use(cors());
 
 app.use(express.json({ limit: "50mb" }));
 
@@ -80,6 +86,7 @@ app.get("/api/users/isWithinRadius/:companyId", rolesMiddleware(["admin","hr","e
     res.status(500).json({ error: errors.userWithinRadiusError });
   }
 });
+
 app.post("/api/users/attendance/mark", rolesMiddleware(["hr","employee"]), async function (req, res) {
   try {
     const { employeeId, companyId, time, isCheckedIn, isCheckedOut, isWorkFromHome } = req.body;
@@ -1571,7 +1578,5 @@ app.post("/api/users/login", async function (req, res) {
     return res.status(500).json({ error: errors.getUsersError });
   }
 });
-
-
 
 module.exports.handler = serverless(app);

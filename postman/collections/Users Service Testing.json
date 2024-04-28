@@ -1,0 +1,676 @@
+{
+	"info": {
+		"_postman_id": "a8acd1d5-e93d-4d08-94b7-cd9e3f64f6af",
+		"name": "Users Service Testing",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_uid": "34554041-a8acd1d5-e93d-4d08-94b7-cd9e3f64f6af"
+	},
+	"item": [
+		{
+			"name": "login",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"id": "151fa5ce-10aa-4de9-b485-2b53264381cd",
+						"exec": [
+							"pm.test(\"Status code is 200\", function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"pm.test(\"Response should be valid JSON\", function () {",
+							"    pm.response.to.be.json;",
+							"});",
+							"",
+							"pm.test(\"Token is present\", function () {",
+							"    pm.expect(pm.response.json()).to.have.property('token');",
+							"});",
+							"",
+							"pm.test(\"Expires in 86400000 seconds\", function () {",
+							"    pm.expect(pm.response.json().expiresIn).to.eql(86400000);",
+							"});",
+							"pm.environment.set(\"superAdminAuthToken\", pm.response.json().token);",
+							"",
+							"",
+							""
+						],
+						"type": "text/javascript",
+						"packages": {}
+					}
+				}
+			],
+			"id": "3be1bb02-df8c-4a07-abda-b3a76005284e",
+			"protocolProfileBehavior": {
+				"disableBodyPruning": true
+			},
+			"request": {
+				"auth": {
+					"type": "noauth"
+				},
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"email\":\"superadmin@gmail.com\",\n    \"password\":\"superadmin123\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{serverless-deployment-url}}/api/users/login",
+					"host": [
+						"{{serverless-deployment-url}}"
+					],
+					"path": [
+						"api",
+						"users",
+						"login"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "create-company",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"id": "a3f66f38-93e6-44ef-8b55-ec3f4cb1a65d",
+						"exec": [
+							"// Test for a successful response",
+							"pm.test(\"Status code is 200\", function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"pm.test(\"Response has companyId as a string\", function () {",
+							"    pm.expect(pm.response.json().companyId).to.be.a(\"string\");",
+							"});",
+							"",
+							"pm.test(\"Response has location object\", function () {",
+							"    pm.expect(pm.response.json()).to.have.property(\"location\").to.be.an(\"object\");",
+							"});",
+							"",
+							"pm.test(\"Response has longitude\", function () {",
+							"    pm.expect(pm.response.json().location).to.have.property(\"longitude\", \"1.233\");",
+							"});",
+							"",
+							"pm.test(\"Response has latitude\", function () {",
+							"    pm.expect(pm.response.json().location).to.have.property(\"latitude\", \"2.333\");",
+							"});",
+							"",
+							"pm.test(\"Response has contactNo\", function () {",
+							"    pm.expect(pm.response.json()).to.have.property(\"contactNo\", \"1234567890\");",
+							"});",
+							"",
+							"pm.test(\"Response has companyImageUrl\", function () {",
+							"    pm.expect(pm.response.json()).to.have.property(\"companyImageUrl\", \"\");",
+							"});",
+							"",
+							"pm.test(\"Response has radiusFromCenterOfCompany\", function () {",
+							"    pm.expect(pm.response.json()).to.have.property(\"radiusFromCenterOfCompany\", \"100\");",
+							"});",
+							"pm.globals.set(\"testCompanyId\", pm.response.json().companyId);"
+						],
+						"type": "text/javascript",
+						"packages": {}
+					}
+				}
+			],
+			"id": "cfbb852d-c71a-4078-be19-364db9ac08ec",
+			"protocolProfileBehavior": {
+				"disableBodyPruning": true
+			},
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "{{superAdminAuthToken}}",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"companyName\": \"{{testCompanyName}}\",\n    \"email\": \"{{testCompanyEmail}}\",\n    \"contactNo\": \"1234567890\",\n    \"longitude\": \"1.233\",\n    \"latitude\": \"2.333\",\n    \"radiusFromCenterOfCompany\": \"100\"\n}\n\n",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{serverless-deployment-url}}/api/users/company/create",
+					"host": [
+						"{{serverless-deployment-url}}"
+					],
+					"path": [
+						"api",
+						"users",
+						"company",
+						"create"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "create-admin",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"id": "a3f66f38-93e6-44ef-8b55-ec3f4cb1a65d",
+						"exec": [
+							"// Test for a successful response",
+							"pm.test(\"Status code is 200\", function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"pm.test(\"Response has userId\", function () {",
+							"    pm.expect(pm.response.json()).to.have.property(\"userId\").to.be.a('string');",
+							"});",
+							"",
+							"pm.test(\"Response has firstName globals\", function () {",
+							"    pm.expect(pm.response.json()).to.have.property(\"firstName\").to.be.a(\"string\");",
+							"});",
+							"pm.test(\"Response has lastName\", function () {",
+							"    pm.expect(pm.response.json()).to.have.property(\"lastName\", \"test-lastname\");",
+							"});",
+							"",
+							"pm.test(\"Response has email\", function () {",
+							"    pm.expect(pm.response.json()).to.have.property(\"email\").to.be.a(\"string\");",
+							"});",
+							"",
+							"pm.test(\"Response has contactNo\", function () {",
+							"    pm.expect(pm.response.json()).to.have.property(\"contactNo\", \"1234567890\");",
+							"});",
+							"",
+							"pm.test(\"Response has companyId\", function () {",
+							"    pm.expect(pm.response.json()).to.have.property(\"companyId\", pm.globals.get(\"testCompanyId\"));",
+							"});",
+							"",
+							"pm.test(\"Response has companyName\", function () {",
+							"    pm.expect(pm.response.json()).to.have.property(\"companyName\").to.be.a(\"string\");;",
+							"});",
+							"",
+							"pm.test(\"Response has role\", function () {",
+							"    pm.expect(pm.response.json()).to.have.property(\"role\", \"admin\");",
+							"});",
+							"",
+							"pm.test(\"Response has adminImageUrl\", function () {",
+							"    pm.expect(pm.response.json()).to.have.property(\"adminImageUrl\", \"\");",
+							"});",
+							""
+						],
+						"type": "text/javascript",
+						"packages": {}
+					}
+				}
+			],
+			"id": "b26bbecf-4476-4912-88e2-dfbc7cc9100e",
+			"protocolProfileBehavior": {
+				"disableBodyPruning": true
+			},
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "{{superAdminAuthToken}}",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"firstName\": \"{{testCompanyAdminName}}\",\n    \"lastName\": \"test-lastname\",\n    \"companyData\": {\n        \"companyId\": \"{{testCompanyId}}\",\n        \"companyName\": \"{{testCompanyName}}\"\n    },\n    \"email\": \"{{testCompanyAdminEmail}}\",\n    \"contactNo\": \"1234567890\"\n}\n",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{serverless-deployment-url}}/api/users/create-admin",
+					"host": [
+						"{{serverless-deployment-url}}"
+					],
+					"path": [
+						"api",
+						"users",
+						"create-admin"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "login",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"id": "718d70e8-1012-4108-af7c-2ad9ca653a3c",
+						"exec": [
+							"pm.test(\"Status code is 200\", function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"pm.test(\"Response should be valid JSON\", function () {",
+							"    pm.response.to.be.json;",
+							"});",
+							"",
+							"pm.test(\"Token is present\", function () {",
+							"    pm.expect(pm.response.json()).to.have.property('token');",
+							"});",
+							"",
+							"pm.test(\"Expires in 86400000 seconds\", function () {",
+							"    pm.expect(pm.response.json().expiresIn).to.eql(86400000);",
+							"});",
+							"pm.environment.set(\"companyAdminAuthToken\", pm.response.json().token);",
+							"",
+							"",
+							""
+						],
+						"type": "text/javascript",
+						"packages": {}
+					}
+				}
+			],
+			"id": "ef12f545-5358-4853-8b7c-e0ec749eaab6",
+			"protocolProfileBehavior": {
+				"disableBodyPruning": true
+			},
+			"request": {
+				"auth": {
+					"type": "noauth"
+				},
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"email\":\"{{testCompanyAdminEmail}}\",\n    \"password\":\"admin123\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{serverless-deployment-url}}/api/users/login",
+					"host": [
+						"{{serverless-deployment-url}}"
+					],
+					"path": [
+						"api",
+						"users",
+						"login"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "create-branch",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"id": "60abf3af-dff5-4139-b80a-5194ea8e7dd4",
+						"exec": [
+							"// Test for a successful response",
+							"pm.test(\"Status code is 200\", function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"// Define the expected response for the branch",
+							"const expectedBranch = {",
+							"    \"branchImageUrl\": \"https://media.istockphoto.com/id/908578348/vector/business-building-illustration.jpg?s=612x612&w=0&k=20&c=thg6Bom79dCRo8pMV3fo7p-8b7m1p-EdLZZPKYpXYvg=\",",
+							"    \"branchId\": \"65945d6b-20e4-4db9-a29d-052a8651453b\",",
+							"    \"radiusFromCenterOfBranch\": \"50\",",
+							"    \"branchName\": \"Test Branch\",",
+							"    \"location\": {",
+							"        \"longitude\": \"-122.4194\",",
+							"        \"latitude\": \"37.7749\"",
+							"    },",
+							"    \"branchEmail\": \"testbranch@example.com\",",
+							"    \"contactNo\": \"1234567890\"",
+							"};",
+							"",
+							"",
+							"",
+							"// Define the expected response for the company",
+							"const expectedCompany = {",
+							"    \"companyId\": pm.globals.get(\"testCompanyId\"),",
+							"    \"companyImageUrl\": \"https://media.istockphoto.com/id/908578348/vector/business-building-illustration.jpg?s=612x612&w=0&k=20&c=thg6Bom79dCRo8pMV3fo7p-8b7m1p-EdLZZPKYpXYvg=\",",
+							"    \"companyName\": \"testCompanyName\",",
+							"    \"contactNo\": \"1234567890\",",
+							"    \"companyEmail\": \"testCompany@gmail.com\"",
+							"};",
+							"",
+							"",
+							"",
+							"pm.globals.set(\"testBranchId\", pm.response.json().branches[0].branchId);",
+							""
+						],
+						"type": "text/javascript",
+						"packages": {}
+					}
+				}
+			],
+			"id": "24fccae6-dc28-413e-ac13-2bd5d909bc8d",
+			"protocolProfileBehavior": {
+				"disableBodyPruning": true
+			},
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "{{companyAdminAuthToken}}",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"branchName\": \"Test Branch\",\n    \"companyId\": \"{{testCompanyId}}\",\n    \"contactNo\": \"1234567890\",\n    \"email\": \"testbranch@example.com\",\n    \"latitude\": \"37.7749\",\n    \"longitude\": \"-122.4194\",\n    \"radiusFromCenterOfBranch\": \"50\"\n}\n",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{serverless-deployment-url}}/api/users/company/create-branch",
+					"host": [
+						"{{serverless-deployment-url}}"
+					],
+					"path": [
+						"api",
+						"users",
+						"company",
+						"create-branch"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "create-branchAdmin",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"id": "60abf3af-dff5-4139-b80a-5194ea8e7dd4",
+						"exec": [
+							"// Test for a successful response",
+							"pm.test(\"Status code is 200\", function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"// Test for userId",
+							"pm.test(\"Response has userId\", function () {",
+							"    pm.expect(pm.response.json()).to.have.property(\"userId\").to.be.a('string');",
+							"});",
+							"",
+							"// Test for companyId",
+							"pm.test(\"Response has companyId\", function () {",
+							"    pm.expect(pm.response.json()).to.have.property(\"companyId\",pm.globals.get(\"testCompanyId\"));",
+							"});",
+							"",
+							"// Test for contactNo",
+							"pm.test(\"Response has contactNo\", function () {",
+							"    pm.expect(pm.response.json()).to.have.property(\"contactNo\", \"1234567890\");",
+							"});",
+							"",
+							"// Test for role",
+							"pm.test(\"Response has role\", function () {",
+							"    pm.expect(pm.response.json()).to.have.property(\"role\", \"branchadmin\");",
+							"});",
+							"",
+							"// Test for email",
+							"pm.test(\"Response has email\", function () {",
+							"    pm.expect(pm.response.json()).to.have.property(\"email\").to.be.a(\"string\");",
+							"});",
+							"",
+							"",
+							"",
+							"// Test for firstName",
+							"pm.test(\"Response has firstName\", function () {",
+							"    pm.expect(pm.response.json()).to.have.property(\"firstName\", \"John\");",
+							"});",
+							"",
+							"// Test for lastName",
+							"pm.test(\"Response has lastName\", function () {",
+							"    pm.expect(pm.response.json()).to.have.property(\"lastName\", \"Doe\");",
+							"});",
+							"",
+							""
+						],
+						"type": "text/javascript",
+						"packages": {}
+					}
+				}
+			],
+			"id": "831f3aa2-5fc5-4bed-9fbb-49c15fc8d154",
+			"protocolProfileBehavior": {
+				"disableBodyPruning": true
+			},
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "{{companyAdminAuthToken}}",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"companyId\": \"{{testCompanyId}}\",\n  \"contactNo\": \"1234567890\",\n  \"dateOfBirth\": \"1990-01-01\",\n  \"designation\": \"branchadmin\",\n  \"branchName\": \"Branch 1\",\n  \"email\": \"{{testBranchAdminEmail}}\",\n  \"joiningDate\": \"2022-01-01\",\n  \"firstName\": \"John\",\n  \"lastName\": \"Doe\",\n  \"username\": \"johndoe\",\n  \"branchId\": \"{{testBranchId}}\"\n}\n",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{serverless-deployment-url}}/api/users/create-branch-admin",
+					"host": [
+						"{{serverless-deployment-url}}"
+					],
+					"path": [
+						"api",
+						"users",
+						"create-branch-admin"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "login",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"id": "75828eb3-efab-4732-87b2-8fa20b7a2ebb",
+						"exec": [
+							"pm.test(\"Status code is 200\", function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"pm.test(\"Response should be valid JSON\", function () {",
+							"    pm.response.to.be.json;",
+							"});",
+							"",
+							"pm.test(\"Token is present\", function () {",
+							"    pm.expect(pm.response.json()).to.have.property('token');",
+							"});",
+							"",
+							"pm.test(\"Expires in 86400000 seconds\", function () {",
+							"    pm.expect(pm.response.json().expiresIn).to.eql(86400000);",
+							"});",
+							"pm.environment.set(\"branchAdminAuthToken\", pm.response.json().token);",
+							"",
+							"",
+							""
+						],
+						"type": "text/javascript",
+						"packages": {}
+					}
+				}
+			],
+			"id": "48806a4b-306f-4876-a0ec-5a3c9d59c5b6",
+			"protocolProfileBehavior": {
+				"disableBodyPruning": true
+			},
+			"request": {
+				"auth": {
+					"type": "noauth"
+				},
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"email\":\"{{testBranchAdminEmail}}\",\n    \"password\":\"admin123\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{serverless-deployment-url}}/api/users/login",
+					"host": [
+						"{{serverless-deployment-url}}"
+					],
+					"path": [
+						"api",
+						"users",
+						"login"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "create-employee",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"id": "60f5f231-7bf2-4695-b23f-2496fbeb6b3f",
+						"exec": [
+							"pm.test(\"Response should have the correct values\", function () {",
+							"    const responseBody = pm.response.json();",
+							"    ",
+							"    pm.expect(responseBody.contactNo).to.eql(\"1234567890\");",
+							"    pm.expect(responseBody.dateOfBirth).to.eql(\"1990-01-01\");",
+							"    pm.expect(responseBody.role).to.eql(\"employee\");",
+							"    pm.expect(responseBody.branchName).to.eql(\"Branch 1\");",
+							"    pm.expect(responseBody.email).to.eql(\"john.doe@example.com\");",
+							"    pm.expect(responseBody.joiningDate).to.eql(\"2022-01-01\");",
+							"    pm.expect(responseBody.firstName).to.eql(\"John\");",
+							"    pm.expect(responseBody.lastName).to.eql(\"Doe\");",
+							"    pm.expect(responseBody.username).to.eql(\"johndoe\");",
+							"});",
+							""
+						],
+						"type": "text/javascript",
+						"packages": {}
+					}
+				}
+			],
+			"id": "f393683f-6b3e-4ac9-b2fa-ffcf06d8dd25",
+			"protocolProfileBehavior": {
+				"disableBodyPruning": true
+			},
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "{{branchAdminAuthToken}}",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"companyId\": \"{{testCompanyId}}\",\n  \"contactNo\": \"1234567890\",\n  \"dateOfBirth\": \"1990-01-01\",\n  \"designation\": \"employee\",\n  \"branchName\": \"Branch 1\",\n  \"email\": \"john.doe@example.com\",\n  \"joiningDate\": \"2022-01-01\",\n  \"firstName\": \"John\",\n  \"lastName\": \"Doe\",\n  \"username\": \"johndoe\",\n  \"branchId\": \"{{testBranchId}}\"\n}\n",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{serverless-deployment-url}}/api/users/create-user",
+					"host": [
+						"{{serverless-deployment-url}}"
+					],
+					"path": [
+						"api",
+						"users",
+						"create-user"
+					]
+				}
+			},
+			"response": []
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"id": "212a173a-d2fc-4560-bb45-fb7c3a3cc23e",
+				"type": "text/javascript",
+				"packages": {},
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"id": "05101b90-b797-46ec-ad85-8a6193b75841",
+				"type": "text/javascript",
+				"packages": {},
+				"exec": [
+					""
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"id": "a0174a78-6d59-403d-be57-03b17d8bbd7c",
+			"key": "serverless-deployment-url",
+			"value": "https://xu2lsv7qk4.execute-api.us-east-1.amazonaws.com",
+			"type": "string"
+		}
+	]
+}
