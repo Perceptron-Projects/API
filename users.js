@@ -5,6 +5,7 @@ const {
   GetCommand,
   PutCommand,
   UpdateCommand,
+  DeleteCommand,
   ScanCommand,
 } = require("@aws-sdk/lib-dynamodb");
 const express = require("express");
@@ -725,6 +726,26 @@ app.get("/api/users/company/:id", rolesMiddleware(["superadmin","admin","brancha
 }
 );
 
+app.delete("/api/users/company/:id", rolesMiddleware(["superadmin"]), async function (req, res) {
+  try {
+    const companyId = req.params.id;
+    const companyParams = {
+      TableName: COMPANY_TABLE,
+      Key: {
+        companyId: companyId,
+      },
+    };
+
+    await dynamoDbClient.send(new DeleteCommand(companyParams));
+
+    res.json({ message: "Company deleted successfully" });
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({ error: errors.deleteCompanyError });
+  }
+}
+);
+
 app.get("/api/users/companies/all", rolesMiddleware(["superadmin"]), async function (req, res) {
   
 
@@ -831,6 +852,29 @@ app.post("/api/users/create-user", rolesMiddleware(["admin","branchadmin"]), asy
 
 });
 
+app.delete("/api/users/:id", rolesMiddleware(["admin","branchadmin"]), async function (req, res) {
+  
+  console.log(req.params.id,"req.params.id");
+  try {
+    const userId = req.params.id;
+    const params = {
+      TableName: EMPLOYEES_TABLE,
+      Key: {
+        userId: userId,
+      },
+    };
+    console.log(params,"params",userId);
+
+    await dynamoDbClient.send(new DeleteCommand(params));
+console.log(params);
+    res.json({ message: "User deleted successfully" });
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({ error: errors.deleteUserError });
+  }
+}
+);
+
 app.post("/api/users/company/create", rolesMiddleware(["superadmin"]), async function (req, res) {
   const { companyName, email, contactNo, longitude, latitude, radiusFromCenterOfCompany } = req.body;
 
@@ -898,6 +942,8 @@ app.post("/api/users/company/create", rolesMiddleware(["superadmin"]), async fun
   }
   
 });
+
+
 
 app.post("/api/users/company/create-branch", rolesMiddleware(["admin"]), async function (req, res) {
   const { branchName, companyId, contactNo, email, latitude, longitude, radiusFromCenterOfBranch } = req.body;
@@ -983,6 +1029,50 @@ console.log(req.body);
   }
 
 });
+
+app.delete("/api/users/company/branch/:companyId/:branchId", rolesMiddleware(["admin"]), async function (req, res) {
+  try {
+    const branchId = req.params.branchId;
+    const companyId = req.params.companyId;
+
+    const params = {
+      TableName: COMPANY_TABLE,
+      Key: {
+        companyId: companyId,
+      },
+    };
+    
+    const { Item: company } = await dynamoDbClient.send(new GetCommand(params));
+
+    if (!company) {
+      res.status(404).json({ error: errors.companyNotFound });
+      return;
+    }
+
+    const branches = company.branches || [];
+    const updatedBranches = branches.filter((branch) => branch.branchId !== branchId);
+
+    const updateParams = {
+      TableName: COMPANY_TABLE,
+      Key: {
+        companyId: companyId,
+      },
+      UpdateExpression: "SET branches = :branches",
+      ExpressionAttributeValues: {
+        ":branches": updatedBranches,
+      },
+      ReturnValues: "ALL_NEW",
+    };
+
+    const { Attributes: updatedAttributes } = await dynamoDbClient.send(new UpdateCommand(updateParams));
+
+    res.json(updatedAttributes);
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({ error: errors.deleteUserError });
+  }
+});
+
 
 app.get("/api/users/branch/:id", rolesMiddleware(["admin",]), async function (req, res) {
   try {
@@ -1113,6 +1203,26 @@ app.post("/api/users/create-branch-admin", rolesMiddleware(["admin"]), async fun
   }
 
 });
+
+app.delete("/api/users/branch-admin/:id", rolesMiddleware(["admin"]), async function (req, res) {
+  try {
+    const branchAdminId = req.params.id;
+    const params = {
+      TableName: ADMINS_TABLE,
+      Key: {
+        userId: branchAdminId,
+      },
+    };
+
+    await dynamoDbClient.send(new DeleteCommand(params));
+
+    res.json({ message: "Branch admin deleted successfully" });
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({ error: errors.deleteUserError });
+  }
+}
+);
 
 app.get("/api/users/company/branch-admins/:companyId", rolesMiddleware(["admin"]), async function (req, res) {
 
@@ -1346,6 +1456,26 @@ app.post("/api/users/create-admin", rolesMiddleware(["superadmin"]), async funct
   }
 });
 
+app.delete("/api/users/admin/:id", rolesMiddleware(["superadmin"]), async function (req, res) {
+  try {
+    const adminId = req.params.id;
+    const params = {
+      TableName: ADMINS_TABLE,
+      Key: {
+        userId: adminId,
+      },
+    };
+
+    await dynamoDbClient.send(new DeleteCommand(params));
+
+    res.json({ message: "Admin deleted successfully" });
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({ error: errors.deleteUserError });
+  }
+}
+);
+
 app.patch("/api/users/admins/:id", rolesMiddleware(["superadmin"]), async function (req, res) {
   try {
     const adminId = req.params.id;
@@ -1437,13 +1567,12 @@ app.patch("/api/users/admins/:id", rolesMiddleware(["superadmin"]), async functi
 app.patch("/api/users/company/:id", rolesMiddleware(["superadmin"]), async function (req, res) {
   try {
     const companyId = req.params.id;
-    const { companyName, latitude, email, contactNo, longitude, radiusFromCenterOfCompany } = req.body;
-
+    const { companyName, latitude, email: companyEmail, contactNo, longitude, radiusFromCenterOfCompany } = req.body;
     // Validate input data
     if (
       typeof companyName !== "string" ||
       typeof latitude !== "string" ||
-      typeof email !== "string" ||
+      typeof companyEmail !== "string" ||
       typeof contactNo !== "string" ||
       typeof longitude !== "string" ||
       typeof radiusFromCenterOfCompany !== "string"
@@ -1484,23 +1613,24 @@ app.patch("/api/users/company/:id", rolesMiddleware(["superadmin"]), async funct
       ...existingCompany,
       companyName: companyName || existingCompany.companyName,
       latitude: latitude || existingCompany.latitude,
-      email: email || existingCompany.email,
+      email: companyEmail || existingCompany.companyEmail,
       contactNo: contactNo || existingCompany.contactNo,
       longitude: longitude || existingCompany.longitude,
       radiusFromCenterOfCompany: radiusFromCenterOfCompany || existingCompany.radiusFromCenterOfCompany,
       companyImageUrl: imageUrl || existingCompany.companyImageUrl || companyDefaultImage,
     };
+    console.log(updatedCompany);
 
     const updateParams = {
       TableName: COMPANY_TABLE,
       Key: {
         companyId: companyId,
       },
-      UpdateExpression: "SET companyName = :companyName, latitude = :latitude, email = :email, contactNo = :contactNo, longitude = :longitude, radiusFromCenterOfCompany = :radiusFromCenterOfCompany, companyImageUrl = :companyImageUrl",
+      UpdateExpression: "SET companyName = :companyName, latitude = :latitude, companyEmail = :companyEmail, contactNo = :contactNo, longitude = :longitude, radiusFromCenterOfCompany = :radiusFromCenterOfCompany, companyImageUrl = :companyImageUrl",
       ExpressionAttributeValues: {
         ":companyName": updatedCompany.companyName,
         ":latitude": updatedCompany.latitude,
-        ":email": updatedCompany.email,
+        ":companyEmail": updatedCompany.email,
         ":contactNo": updatedCompany.contactNo,
         ":longitude": updatedCompany.longitude,
         ":radiusFromCenterOfCompany": updatedCompany.radiusFromCenterOfCompany,
@@ -1508,9 +1638,10 @@ app.patch("/api/users/company/:id", rolesMiddleware(["superadmin"]), async funct
       },
       ReturnValues: "ALL_NEW",
     };
+    
 
     const { Attributes: updatedAttributes } = await dynamoDbClient.send(new UpdateCommand(updateParams));
-
+console.log(updatedAttributes);
     res.json(updatedAttributes);
   } catch (error) {
     console.error(error);
