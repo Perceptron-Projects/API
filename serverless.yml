@@ -7,6 +7,8 @@ provider:
   name: aws
   runtime: nodejs18.x
   region: us-east-1
+  stage: dev
+  memorySize: 128
   iam:
     role:
       statements:
@@ -24,13 +26,13 @@ provider:
             - s3:ListObjects
             - s3:DeleteObject
           Resource:
-            - Fn::GetAtt: [ AdminsTable, Arn ]
-            - Fn::GetAtt: [ EmployeesTable, Arn ]
-            - Fn::GetAtt: [ HolidayCalendar, Arn ]
-            - Fn::GetAtt: [ LeavesCalendar, Arn ]
-            - Fn::GetAtt: [ CompanyTable, Arn ]
-            - Fn::GetAtt: [ TeamTable, Arn ]
-            - Fn::GetAtt: [ AttendanceTable, Arn ]
+            - Fn::GetAtt: [AdminsTable, Arn]
+            - Fn::GetAtt: [EmployeesTable, Arn]
+            - Fn::GetAtt: [HolidayCalendar, Arn]
+            - Fn::GetAtt: [LeavesCalendar, Arn]
+            - Fn::GetAtt: [CompanyTable, Arn]
+            - Fn::GetAtt: [TeamTable, Arn]
+            - Fn::GetAtt: [AttendanceTable, Arn]
             - Fn::Sub: arn:aws:s3:::${self:custom.imagesBucketName}
             - Fn::Sub: arn:aws:s3:::${self:custom.imagesBucketName}/*
 
@@ -43,10 +45,6 @@ provider:
           Resource:
             - arn:aws:s3:::${self:custom.imagesBucketName}/*
             - arn:aws:s3:::${self:custom.imagesBucketName}
-
-        - Effect: Allow
-          Action: s3:ListAllMyBuckets
-          Resource: "*"
 
   environment:
     EMPLOYEES_TABLE: ${self:custom.employeesTableName}
@@ -76,6 +74,7 @@ functions:
 
   calendar:
     handler: calendar.handler
+    timeout: 300
     events:
       - httpApi:
           path: /api/calendar/{proxy+}
@@ -89,7 +88,7 @@ custom:
   companyTableName: company
   teamTableName: team
   attendanceTableName: attendance
-  imagesBucketName: uom-fit-ams-images-bucket
+  imagesBucketName: uom-fit-ams-images-bucket-1
 
 resources:
   Resources:
@@ -121,10 +120,10 @@ resources:
       Type: AWS::DynamoDB::Table
       Properties:
         AttributeDefinitions:
-          - AttributeName: Day
+          - AttributeName: holidayId
             AttributeType: S
         KeySchema:
-          - AttributeName: Day
+          - AttributeName: holidayId
             KeyType: HASH
         BillingMode: PAY_PER_REQUEST
         TableName: ${self:custom.holidayCalendarTableName}
