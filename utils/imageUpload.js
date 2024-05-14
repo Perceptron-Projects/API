@@ -2,13 +2,9 @@
 const {PutObjectCommand } = require("@aws-sdk/client-s3");
 const { v4: uuidv4 } = require("uuid");
 const { S3Client } = require("@aws-sdk/client-s3");
+const IMAGES_BUCKET_NAME = process.env.IMAGES_BUCKET_NAME;
 const s3Client = new S3Client();
-const errors = require('../config/errors');
-const { config } = require("dotenv");
-
-
-
-const IMAGES_BUCKET_NAME = process.env.IMAGES_BUCKET_NAME || config().parsed.IMAGES_BUCKET_NAME;
+const errors = require('../config/errors')
 
 
 async function uploadImage(imageDataUri) {
