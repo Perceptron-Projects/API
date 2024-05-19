@@ -27,6 +27,7 @@ const cors = require('cors');
 const app = express();
 
 
+const TEAM_TABLE = process.env.TEAM_TABLE;
 const ADMINS_TABLE = process.env.ADMINS_TABLE;
 const EMPLOYEES_TABLE = process.env.EMPLOYEES_TABLE;
 const COMPANY_TABLE = process.env.COMPANY_TABLE;
@@ -1709,5 +1710,23 @@ app.post("/api/users/login", async function (req, res) {
     return res.status(500).json({ error: errors.getUsersError });
   }
 });
+
+//get all teams 
+
+app.get("/api/users/teams/all", async function (req, res) {
+  const params = {
+    TableName: TEAM_TABLE,
+  };
+  try {
+    const { Items } = await dynamoDbClient.send(new ScanCommand(params));
+    res.json(Items);
+    console.log(Items);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: errors.getUsersError });
+  }
+});
+
+
 
 module.exports.handler = serverless(app);
