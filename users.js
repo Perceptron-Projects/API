@@ -1727,6 +1727,29 @@ app.get("/api/users/teams/all", async function (req, res) {
   }
 });
 
+// get single team
+
+app.get("/api/users/team/:teamId", async function (req, res) {
+  const teamId = req.params.teamId;
+  const params = {
+    TableName: TEAM_TABLE,
+    Key: {
+      teamId: teamId,
+    },
+  };
+  try {
+    const { Item } = await dynamoDbClient.send(new GetCommand(params));
+    if (Item) {
+      res.json(Item);
+    } else {
+      res.status(404).json({ error: errors.teamNotFound });
+    }
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: errors.getUsersError });
+  }
+});
+
 
 
 module.exports.handler = serverless(app);
