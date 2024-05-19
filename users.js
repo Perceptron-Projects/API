@@ -27,6 +27,7 @@ const cors = require('cors');
 const app = express();
 
 
+const TEAM_TABLE = process.env.TEAM_TABLE;
 const ADMINS_TABLE = process.env.ADMINS_TABLE;
 const EMPLOYEES_TABLE = process.env.EMPLOYEES_TABLE;
 const COMPANY_TABLE = process.env.COMPANY_TABLE;
