@@ -1829,63 +1829,7 @@ app.put("/api/users/team/:teamId", async function (req, res) {
   }
 });
 
-// add new team
 
-app.post("/api/users/teams", async function (req, res) {
-  if (req.body.teamsImage) {
-    try {
-      const uploadResult = await uploadImage(req.body.teamsImage);
-      req.body.teamsImage = uploadResult.imageUrl;
-    } catch (error) {
-      console.error("Error:", error);
-      res.status(500).json({ error: errors.imageUploadError });
-      return;
-    }
-  }
-
-  const params = {
-    TableName: TEAM_TABLE,
-    Item: {
-      teamId: uuidv4(),
-      ...req.body,
-    },
-  };
-
-  try {
-    await dynamoDbClient.send(new PutCommand(params));
-    res.json({
-      message: "Team added successfully",
-    });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: errors.createUserError });
-  }
-});
-
-app.get("/api/users/company/employees/:companyId", async function (req, res) {
-  console.log("api called");
-
-  const companyId = req.params.companyId;
-  console.log("companyId:", companyId);
-
-  const params = {
-    TableName: EMPLOYEES_TABLE,
-    FilterExpression: "#companyId = :companyId AND #role = :role",
-    ExpressionAttributeNames: {
-      "#companyId": "companyId",
-      "#role": "role",
-    },
-    ExpressionAttributeValues: {
-      ":companyId": companyId,
-      ":role": "employee",
-    },
-  };
-
-  const { Items: employees } = await dynamoDbClient.send(
-    new ScanCommand(params)
-  );
-  res.json(employees);
-});
 
 
 
