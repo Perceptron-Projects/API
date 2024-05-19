@@ -1772,6 +1772,122 @@ app.delete("/api/users/team/:teamId", async function (req, res) {
 });
 
 
+// update team
+
+app.put("/api/users/team/:teamId", async function (req, res) {
+  const teamId = req.params.teamId;
+
+  console.log("team", teamId, req.body);
+  if (!teamId) {
+    return res.status(400).json({ error: errors.invalidTeamId });
+  }
+
+  if (!req.body) {
+    return res.status(400).json({ error: errors.invalidRequestBody });
+  }
+
+  const base64regex =
+    /^([0-9a-zA-Z+/]{4})*(([0-9a-zA-Z+/]{2}==)|([0-9a-zA-Z+/]{3}=))?$/;
+
+  if (base64regex.test(req.body.teamsImage)) {
+    try {
+      const uploadResult = await uploadImage(req.body.teamsImage);
+      req.body.teamsImage = uploadResult.imageUrl;
+      console.log(uploadResult);
+    } catch (error) {
+      console.error("Error:", error);
+      res.status(500).json({ error: errors.imageUploadError });
+      return;
+    }
+  }
+
+  const params = {
+    TableName: TEAM_TABLE,
+    Key: {
+      teamId: teamId,
+    },
+    UpdateExpression:
+      "SET teamName = :teamName, teamMembers = :teamMembers ,projectName = :projectName, supervisor = :supervisor, startDate = :startDate, teamsImage = :teamsImage",
+    ExpressionAttributeValues: {
+      ":teamName": req.body.teamName,
+      ":projectName": req.body.projectName,
+      ":supervisor": req.body.supervisor,
+      ":startDate": req.body.startDate,
+      ":teamsImage": req.body.teamsImage,
+      ":teamMembers": req.body.teamMembers,
+    },
+
+    ConditionExpression: "attribute_exists(teamId)",
+    ReturnValues: "ALL_NEW",
+  };
+  try {
+    await dynamoDbClient.send(new UpdateCommand(params));
+    res.json({ message: "Team updated successfully" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ messages: "Failed to update team" });
+  }
+});
+
+// add new team
+
+app.post("/api/users/teams", async function (req, res) {
+  if (req.body.teamsImage) {
+    try {
+      const uploadResult = await uploadImage(req.body.teamsImage);
+      req.body.teamsImage = uploadResult.imageUrl;
+    } catch (error) {
+      console.error("Error:", error);
+      res.status(500).json({ error: errors.imageUploadError });
+      return;
+    }
+  }
+
+  const params = {
+    TableName: TEAM_TABLE,
+    Item: {
+      teamId: uuidv4(),
+      ...req.body,
+    },
+  };
+
+  try {
+    await dynamoDbClient.send(new PutCommand(params));
+    res.json({
+      message: "Team added successfully",
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: errors.createUserError });
+  }
+});
+
+app.get("/api/users/company/employees/:companyId", async function (req, res) {
+  console.log("api called");
+
+  const companyId = req.params.companyId;
+  console.log("companyId:", companyId);
+
+  const params = {
+    TableName: EMPLOYEES_TABLE,
+    FilterExpression: "#companyId = :companyId AND #role = :role",
+    ExpressionAttributeNames: {
+      "#companyId": "companyId",
+      "#role": "role",
+    },
+    ExpressionAttributeValues: {
+      ":companyId": companyId,
+      ":role": "employee",
+    },
+  };
+
+  const { Items: employees } = await dynamoDbClient.send(
+    new ScanCommand(params)
+  );
+  res.json(employees);
+});
+
+
 
 
 module.exports.handler = serverless(app);
