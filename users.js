@@ -1751,5 +1751,27 @@ app.get("/api/users/team/:teamId", async function (req, res) {
 });
 
 
+// delete team
+
+app.delete("/api/users/team/:teamId", async function (req, res) {
+  const teamId = req.params.teamId;
+  console.log("team", teamId);
+  const params = {
+    TableName: TEAM_TABLE,
+    Key: {
+      teamId: teamId,
+    },
+  };
+  try {
+    await dynamoDbClient.send(new DeleteCommand(params));
+    res.json({ message: "Team deleted successfully" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json(error);
+  }
+});
+
+
+
 
 module.exports.handler = serverless(app);
