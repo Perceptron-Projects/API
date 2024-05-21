@@ -771,93 +771,147 @@ app.get("/api/users/companies/all", rolesMiddleware(["superadmin"]), async funct
   }
 });
 
-app.post("/api/users/create-user", rolesMiddleware(["admin","branchadmin"]), async function (req, res) {
-   const { companyId,contactNo, dateOfBirth, designation,branchName, email, joiningDate,firstName, lastName,username,branchId } = req.body;
-   
-  // Validate input data
-  if (
-    typeof companyId !== "string" ||
-    typeof contactNo !== "string" ||
-    typeof dateOfBirth !== "string" ||
-    typeof designation !== "string" ||
-    typeof email !== "string" ||
-    typeof joiningDate !== "string" ||
-    typeof firstName !== "string" ||
-    typeof lastName !== "string" ||
-    typeof username !== "string"||
-    typeof branchId !== "string"||
-    typeof branchName !== "string"
-  ) {
-    res.status(400).json({ error: errors.invalidInputData });
-    return;
-  }
 
-  let imageUrl = '';
+app.post("/api/users/create-user", rolesMiddleware(["admin", "branchadmin"]), async function (req, res) {
+    const { companyId, contactNo, dateOfBirth, designation, branchName, email, joiningDate, firstName, lastName, username, branchId } = req.body;
 
-  if (req.body.image) {
-    try {
-      // Await the result of the uploadImage function
-      const uploadResult = await uploadImage(req.body.image);
-      imageUrl = uploadResult.imageUrl;
-    } catch (error) {
-      console.error("Error:", error);
-      res.status(500).json({ error: errors.imageUploadError });
-      return;
+    // Validate input data
+    if (
+        typeof companyId !== "string" ||
+        typeof contactNo !== "string" ||
+        typeof dateOfBirth !== "string" ||
+        typeof designation !== "string" ||
+        typeof email !== "string" ||
+        typeof joiningDate !== "string" ||
+        typeof firstName !== "string" ||
+        typeof lastName !== "string" ||
+        typeof username !== "string" ||
+        typeof branchId !== "string" ||
+        typeof branchName !== "string"
+    ) {
+        res.status(400).json({ error: errors.invalidInputData });
+        return;
     }
+
+    let imageUrl = '';
+
+    if (req.body.image) {
+        try {
+            // Await the result of the uploadImage function
+            const uploadResult = await uploadImage(req.body.image);
+            imageUrl = uploadResult.imageUrl;
+        } catch (error) {
+            console.error("Error:", error);
+            res.status(500).json({ error: errors.imageUploadError });
+            return;
+        }
+    }
+
+    const userId =  "EMP-" +generateUniqueUserId();
+
+    const password = bcrypt.hashSync("employee123", 10);
+
+    const params = {
+        TableName: EMPLOYEES_TABLE,
+        Item: {
+            userId: userId,
+            companyId: companyId,
+            contactNo: contactNo,
+            dateOfBirth: dateOfBirth,
+            role: designation,
+            email: email,
+            joiningDate: joiningDate,
+            firstName: firstName,
+            lastName: lastName,
+            username: username,
+            password: password,
+            branchId: branchId,
+            imageUrl: imageUrl || urls.employeeDefaultImage,
+            branchName: branchName,
+        },
+    };
+
+    try {
+        await dynamoDbClient.send(new PutCommand(params));
+        res.json({
+            userId,
+            companyId,
+            contactNo,
+            dateOfBirth,
+            role: designation,
+            email,
+            joiningDate,
+            firstName,
+            lastName,
+            username,
+            branchId,
+            imageUrl,
+            branchName,
+        });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: errors.createUserError });
+    }
+});
+
+app.get("/api/users/check-email/:email", rolesMiddleware(["superadmin", "admin", "branchadmin", "hr", "employee"]), async function (req, res) {
+  const email = req.params.email;
+
+  if (typeof email !== "string") {
+      res.status(400).json({ error: errors.invalidInputData });
+      return;
   }
 
-  const userId = uuidv4();
+  const empParams = {
+      TableName: EMPLOYEES_TABLE,
+      FilterExpression: "#email = :email",
+      ExpressionAttributeNames: {
+          "#email": "email",
+      },
+      ExpressionAttributeValues: {
+          ":email": email,
+      },
+  };
 
-  const password = bcrypt.hashSync("employee123", 10);
+  const adminParams = {
+      TableName: ADMINS_TABLE,
+      FilterExpression: "#email = :email",
+      ExpressionAttributeNames: {
+          "#email": "email",
+      },
+      ExpressionAttributeValues: {
+          ":email": email,
+      },
+  };
 
-  const params = {
-    TableName: EMPLOYEES_TABLE,
-    Item: {
-      userId: userId,
-      companyId: companyId,
-      contactNo: contactNo,
-      dateOfBirth: dateOfBirth,
-      role: designation,
-      email: email,
-      joiningDate: joiningDate,
-      firstName: firstName,
-      lastName: lastName,
-      username: username,
-      password: password,
-      branchId: branchId,
-      imageUrl: imageUrl || urls.employeeDefaultImage,
-      branchName: branchName,
-    },
+  const companyParams = {
+      TableName: COMPANY_TABLE,
+      FilterExpression: "#companyEmail = :companyEmail",
+      ExpressionAttributeNames: {
+          "#companyEmail": "companyEmail",
+      },
+      ExpressionAttributeValues: {
+          ":companyEmail": email,
+      },
   };
 
   try {
-    await dynamoDbClient.send(new PutCommand(params));
-    res.json({
-      userId,
-      companyId,
-      contactNo,
-      dateOfBirth,
-      role: designation,
-      email,
-      joiningDate,
-      firstName,
-      lastName,
-      username,
-      branchId,
-      imageUrl,
-      branchName,
-    });
+      const { Items: users } = await dynamoDbClient.send(new ScanCommand(empParams));
+      const { Items: admins } = await dynamoDbClient.send(new ScanCommand(adminParams));
+      const { Items: companies } = await dynamoDbClient.send(new ScanCommand(companyParams));
+
+      if (users.length > 0 || admins.length > 0 || companies.length > 0) {
+          res.json({ emailExists: true });
+      } else {
+          res.json({ emailExists: false });
+      }
+  } catch (error) {
+      console.error("Error checking email existence:", error);
+      res.status(500).json({ error: errors.emailCheckError });
   }
-  catch (error) {
-    console.error(error);
-    res.status(500).json({ error: errors.createUserError });
-  }
-
-
-
-
-
 });
+
+
 
 app.delete("/api/users/:id", rolesMiddleware(["admin","branchadmin"]), async function (req, res) {
   
@@ -911,7 +965,7 @@ app.post("/api/users/company/create", rolesMiddleware(["superadmin"]), async fun
     }
   }
   
-  const companyId = uuidv4(); // Generate a unique companyId
+  const companyId = "COMP-" +generateUniqueUserId();
   
   const params = {
     TableName: COMPANY_TABLE,
@@ -982,7 +1036,7 @@ console.log(req.body);
     }
   }
 
-  const branchId = uuidv4(); // Generate a unique branchId
+  const branchId = "COMP_B-" +generateUniqueUserId();
 
   const params = {
     TableName: COMPANY_TABLE,
@@ -1142,7 +1196,7 @@ app.post("/api/users/create-branch-admin", rolesMiddleware(["admin"]), async fun
     }
   }
 
-  const userId = uuidv4();
+  const userId = "B_ADMIN-" +generateUniqueUserId();
 
   const password = bcrypt.hashSync("admin123", 10);
 
@@ -1423,7 +1477,7 @@ app.post("/api/users/create-admin", rolesMiddleware(["superadmin"]), async funct
     return;
   }
 
-  const userId = uuidv4();
+  const userId = "COMP_ADMIN-" +generateUniqueUserId();
 
   const password = bcrypt.hashSync("admin123", 10);
 
@@ -1890,7 +1944,11 @@ app.get("/api/users/company/employees/:companyId", async function (req, res) {
 
 
 
-
+function generateUniqueUserId() {
+  const uuid = uuidv4(); // Generate a UUID
+  const shortId = Buffer.from(uuid).toString('base64').replace(/=/g, '').slice(0, 5); // Convert UUID to Base64 and truncate
+  return shortId;
+}
 
 
 module.exports.handler = serverless(app);
