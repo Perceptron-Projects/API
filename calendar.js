@@ -117,31 +117,33 @@ app.get("/api/calendar/holidays/:day", rolesMiddleware(["admin","hr","employee"]
   }
 });
 
-app.post("/api/calendar/holidays", rolesMiddleware(["admin","hr"]), async function (req, res) {
-  const { day, desc } = req.body;
+app.post(
+  "/api/calendar/holidays",
+  rolesMiddleware(["admin", "hr"]),
+  async function (req, res) {
+    if (!req.body) {
+      res.status(400).json({ error: "data must be provided" });
+      return;
+    }
+    const holidayId = uuidv4();
 
-  if (typeof day !== "string" || typeof desc !== "string") {
-    res.status(400).json({ error: '"day" and "desc" must be strings' });
-    return;
+    const params = {
+      TableName: HOLIDAY_CALENDAR_TABLE,
+      Item: {
+        holidayId: holidayId,
+        ...req.body,
+      },
+    };
+
+    try {
+      await dynamoDbClient.send(new PutCommand(params));
+      res.json(req.body);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: errors.createHolidayError });
+    }
   }
-
-  const params = {
-    TableName: HOLIDAY_CALENDAR_TABLE,
-    Item: {
-      Day: day,
-      Desc: desc,
-    },
-  };
-
-  try {
-    await dynamoDbClient.send(new PutCommand(params));
-    res.json({ day, desc });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: errors.createHolidayError});
-  }
-});
-
+);
 app.get("/api/calendar/holidays", rolesMiddleware(["admin","hr","employee"]), async function (req, res) {
    const params = {
       TableName: HOLIDAY_CALENDAR_TABLE, 
