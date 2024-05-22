@@ -144,27 +144,36 @@ app.post(
     }
   }
 );
-app.get("/api/calendar/holidays", rolesMiddleware(["admin","hr","employee"]), async function (req, res) {
-   const params = {
-      TableName: HOLIDAY_CALENDAR_TABLE, 
-  };
+app.get(
+  "/api/calendar/holidays",
+  rolesMiddleware(["admin", "hr", "employee", "supervisor"]),
+  async function (req, res) {
+    const params = {
+      TableName: HOLIDAY_CALENDAR_TABLE,
+    };
 
-  try {
+    try {
       const { Items } = await dynamoDbClient.send(new ScanCommand(params));
-    
-      const formattedItems = Items.map(item => {
-        return {
-            Desc: item.Desc.S,
-            Day: item.Day.S,
-        };
-    });
 
-    res.json(formattedItems);
-  } catch (error) {
+      const formattedItems = Items.map((item) => {
+        return {
+          id: item.holidayId.S,
+          end: item.end.S,
+          start: item.start.S,
+          type: item.type.S,
+          title: item.title.S,
+          markedBy: item.markedBy.S,
+        };
+      });
+
+      res.json(formattedItems);
+    } catch (error) {
       console.log(error);
       res.status(500).json({ error: errors.retrieveAllHolidaysError });
+    }
   }
-});
+);
+
         
 app.get("/api/calendar/leaves/:day/:employeeId", rolesMiddleware(["admin","hr","employee"]), async function (req, res) {
   try {
