@@ -7,13 +7,15 @@ const {
   DynamoDBDocumentClient,
   GetCommand,
   PutCommand,
+  DeleteCommand,
+  UpdateCommand,
 } = require("@aws-sdk/lib-dynamodb");
 const express = require("express");
 const serverless = require("serverless-http");
 const { authenticateToken } = require("./middlewares/authMiddleware");
 const { rolesMiddleware } = require("./middlewares/rolesMiddleware");
 const errors = require('./config/errors');
-
+const { v4: uuidv4 } = require("uuid");
 const app = express();
 
 const HOLIDAY_CALENDAR_TABLE = process.env.HOLIDAY_CALENDAR_TABLE;
@@ -115,52 +117,66 @@ app.get("/api/calendar/holidays/:day", rolesMiddleware(["admin","hr","employee"]
   }
 });
 
-app.post("/api/calendar/holidays", rolesMiddleware(["admin","hr"]), async function (req, res) {
-  const { day, desc } = req.body;
+// calender event api
 
-  if (typeof day !== "string" || typeof desc !== "string") {
-    res.status(400).json({ error: '"day" and "desc" must be strings' });
-    return;
+app.post(
+  "/api/calendar/holidays",
+  rolesMiddleware(["admin", "hr"]),
+  async function (req, res) {
+    if (!req.body) {
+      res.status(400).json({ error: "data must be provided" });
+      return;
+    }
+    const holidayId = uuidv4();
+
+    const params = {
+      TableName: HOLIDAY_CALENDAR_TABLE,
+      Item: {
+        holidayId: holidayId,
+        ...req.body,
+      },
+    };
+
+    try {
+      await dynamoDbClient.send(new PutCommand(params));
+      res.json(req.body);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: errors.createHolidayError });
+    }
   }
+);
 
-  const params = {
-    TableName: HOLIDAY_CALENDAR_TABLE,
-    Item: {
-      Day: day,
-      Desc: desc,
-    },
-  };
+app.get(
+  "/api/calendar/holidays",
+  rolesMiddleware(["admin", "hr", "employee", "supervisor"]),
+  async function (req, res) {
+    const params = {
+      TableName: HOLIDAY_CALENDAR_TABLE,
+    };
 
-  try {
-    await dynamoDbClient.send(new PutCommand(params));
-    res.json({ day, desc });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: errors.createHolidayError});
-  }
-});
-
-app.get("/api/calendar/holidays", rolesMiddleware(["admin","hr","employee"]), async function (req, res) {
-   const params = {
-      TableName: HOLIDAY_CALENDAR_TABLE, 
-  };
-
-  try {
+    try {
       const { Items } = await dynamoDbClient.send(new ScanCommand(params));
-    
-      const formattedItems = Items.map(item => {
-        return {
-            Desc: item.Desc.S,
-            Day: item.Day.S,
-        };
-    });
 
-    res.json(formattedItems);
-  } catch (error) {
+      const formattedItems = Items.map((item) => {
+        return {
+          id: item.holidayId.S,
+          end: item.end.S,
+          start: item.start.S,
+          type: item.type.S,
+          title: item.title.S,
+          markedBy: item.markedBy.S,
+        };
+      });
+
+      res.json(formattedItems);
+    } catch (error) {
       console.log(error);
       res.status(500).json({ error: errors.retrieveAllHolidaysError });
+    }
   }
-});
+);
+
         
 app.get("/api/calendar/leaves/:day/:employeeId", rolesMiddleware(["admin","hr","employee"]), async function (req, res) {
   try {
@@ -254,6 +270,61 @@ app.post("/api/calendar/leaves", rolesMiddleware(["admin","hr","employee"]), asy
   }
 });
 
+//Deleting a holiday
+app.delete(
+  "/api/calendar/holidays/:holidayId",
+  rolesMiddleware(["admin", "hr"]),
+  async function (req, res) {
+    const holidayId = req.params.holidayId;
+    const params = {
+      TableName: HOLIDAY_CALENDAR_TABLE,
+      Key: {
+        holidayId: holidayId,
+      },
+    };
+    try {
+      await dynamoDbClient.send(new DeleteCommand(params));
+      res.json({ success: true });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: errors.deleteHolidayError });
+    }
+  }
+);
+
+//Updating a holiday
+app.put("/api/calendar/holidays/:holidayId", async function (req, res) {
+  const holidayId = req.params.holidayId;
+  const params = {
+    TableName: HOLIDAY_CALENDAR_TABLE,
+    Key: {
+      holidayId: holidayId,
+    },
+    UpdateExpression:
+      "SET #start = :start, #end = :end, #title = :title, #type = :type",
+    ExpressionAttributeNames: {
+      "#start": "start",
+      "#end": "end",
+      "#title": "title",
+      "#type": "type",
+    },
+    ExpressionAttributeValues: {
+      ":start": req.body.start,
+      ":end": req.body.end,
+      ":title": req.body.title,
+      ":type": req.body.type,
+      //req.body.markedBy
+    },
+  };
+
+  try {
+    await dynamoDbClient.send(new UpdateCommand(params));
+    res.json({ success: true });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: errors.updateHolidayError });
+  }
+});
 
 
 
