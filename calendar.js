@@ -8,6 +8,7 @@ const {
   GetCommand,
   PutCommand,
   DeleteCommand,
+  UpdateCommand,
 } = require("@aws-sdk/lib-dynamodb");
 const express = require("express");
 const serverless = require("serverless-http");
@@ -277,6 +278,39 @@ app.delete(
   }
 );
 
+//update holiday
+app.put("/api/calendar/holidays/:holidayId", async function (req, res) {
+  const holidayId = req.params.holidayId;
+  const params = {
+    TableName: HOLIDAY_CALENDAR_TABLE,
+    Key: {
+      holidayId: holidayId,
+    },
+    UpdateExpression:
+      "SET #start = :start, #end = :end, #title = :title, #type = :type",
+    ExpressionAttributeNames: {
+      "#start": "start",
+      "#end": "end",
+      "#title": "title",
+      "#type": "type",
+    },
+    ExpressionAttributeValues: {
+      ":start": req.body.start,
+      ":end": req.body.end,
+      ":title": req.body.title,
+      ":type": req.body.type,
+      //req.body.markedBy
+    },
+  };
+
+  try {
+    await dynamoDbClient.send(new UpdateCommand(params));
+    res.json({ success: true });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: errors.updateHolidayError });
+  }
+});
 
 
 
