@@ -112,6 +112,26 @@ resources:
             ToPort: 80
             CidrIp: 0.0.0.0/0
 
+    CalendarFunction:
+      Type: AWS::Lambda::Function
+      Properties:
+        FunctionName: !Sub 'calendar-${AWS::Region}'
+        Runtime: nodejs18.x
+        Handler: calendar.handler
+        Role: !GetAtt 'LambdaExecutionRole.Arn'
+        Environment:
+          BUCKET_NAME: !Ref ImagesBucket
+
+    UsersFunction:
+      Type: AWS::Lambda::Function
+      Properties:
+        FunctionName: !Sub 'users-${AWS::Region}'
+        Runtime: nodejs18.x
+        Handler: users.handler
+        Role: !GetAtt 'LambdaExecutionRole.Arn'
+        Environment:
+          BUCKET_NAME: !Ref ImagesBucket
+
     TargetGroup:
       Type: AWS::ElasticLoadBalancingV2::TargetGroup
       Properties:
@@ -122,9 +142,9 @@ resources:
         Port: 80
         Protocol: HTTP
         Targets:
-          - Id: !Ref users
+          - Id: !Ref CalendarFunction
             Port: 80
-          - Id: !Ref calendar
+          - Id: !Ref UsersFunction
             Port: 80
 
     ALBListener:
