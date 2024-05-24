@@ -93,6 +93,52 @@ custom:
 
 resources:
   Resources:
+
+    ALB:
+      Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+      Properties:
+        IpAddressType: ipv4
+        Scheme: internet-facing
+        Subnets:
+          - Fn::GetAtt: [ Subnet, SubnetId ]
+
+    ALBSecurityGroup:
+      Type: AWS::EC2::SecurityGroup
+      Properties:
+        GroupDescription: Allow HTTP traffic on port 80
+        SecurityGroupIngress:
+          - IpProtocol: tcp
+            FromPort: 80
+            ToPort: 80
+            CidrIp: 0.0.0.0/0
+
+    TargetGroup:
+      Type: AWS::ElasticLoadBalancingV2::TargetGroup
+      Properties:
+        HealthCheckIntervalSeconds: 30
+        HealthCheckPath: /
+        HealthCheckProtocol: HTTP
+        HealthCheckTimeoutSeconds: 10
+        Port: 80
+        Protocol: HTTP
+        Targets:
+          - Id: !Ref users
+            Port: 80
+          - Id: !Ref calendar
+            Port: 80
+
+    ALBListener:
+      Type: AWS::ElasticLoadBalancingV2::Listener
+      Properties:
+        DefaultActions:
+          - Type: forward
+            TargetGroupArn: !Ref TargetGroup
+        LoadBalancerArn: !Ref ALB
+        Port: 80
+        Protocol: HTTP
+
+
+
     AdminsTable:
       Type: AWS::DynamoDB::Table
       Properties:
@@ -210,3 +256,8 @@ resources:
                 - POST
                 - DELETE
               MaxAge: 3000
+
+  Outputs:
+    ALBDNS:
+      Value: !GetAtt ALB.DNSName
+      Description: The DNS name of the ALB
