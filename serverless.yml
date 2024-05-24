@@ -112,13 +112,54 @@ resources:
             ToPort: 80
             CidrIp: 0.0.0.0/0
 
+    LambdaExecutionRole:
+      Type: AWS::IAM::Role
+      Properties:
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service: lambda.amazonaws.com
+              Action: sts:AssumeRole
+        Policies:
+          - PolicyName: ExecutionRolePolicy
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - 'logs:CreateLogGroup'
+                    - 'logs:CreateLogStream'
+                    - 'logs:PutLogEvents'
+                  Resource: 'arn:aws:logs:*:*:*'
+                - Effect: Allow
+                  Action:
+                    - 'ec2:CreateNetworkInterface'
+                    - 'ec2:DescribeNetworkInterfaces'
+                    - 'ec2:DeleteNetworkInterface'
+                  Resource: '*'
+                - Effect: Allow
+                  Action:
+                    - 'ec2:AssignPrivateIpAddresses'
+                    - 'ec2:UnassignPrivateIpAddresses'
+                  Resource: '*'
+                - Effect: Allow
+                  Action:
+                    - 'ec2:DescribeSecurityGroups'
+                  Resource: '*'
+                - Effect: Allow
+                  Action:
+                    - 'ec2:DescribeSubnets'
+                  Resource: '*'
+
     CalendarFunction:
       Type: AWS::Lambda::Function
       Properties:
         FunctionName: !Sub 'calendar-${AWS::Region}'
         Runtime: nodejs18.x
         Handler: calendar.handler
-        Role: !GetAtt 'LambdaExecutionRole.Arn'
+        Role: !GetAtt LambdaExecutionRole.Arn
         Environment:
           BUCKET_NAME: !Ref ImagesBucket
 
@@ -128,7 +169,7 @@ resources:
         FunctionName: !Sub 'users-${AWS::Region}'
         Runtime: nodejs18.x
         Handler: users.handler
-        Role: !GetAtt 'LambdaExecutionRole.Arn'
+        Role: !GetAtt LambdaExecutionRole.Arn
         Environment:
           BUCKET_NAME: !Ref ImagesBucket
 
