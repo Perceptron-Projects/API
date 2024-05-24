@@ -93,113 +93,6 @@ custom:
 
 resources:
   Resources:
-
-    ALB:
-      Type: AWS::ElasticLoadBalancingV2::LoadBalancer
-      Properties:
-        IpAddressType: ipv4
-        Scheme: internet-facing
-        Subnets:
-          - Fn::GetAtt: [ Subnet, SubnetId ]
-
-    ALBSecurityGroup:
-      Type: AWS::EC2::SecurityGroup
-      Properties:
-        GroupDescription: Allow HTTP traffic on port 80
-        SecurityGroupIngress:
-          - IpProtocol: tcp
-            FromPort: 80
-            ToPort: 80
-            CidrIp: 0.0.0.0/0
-
-    LambdaExecutionRole:
-      Type: AWS::IAM::Role
-      Properties:
-        AssumeRolePolicyDocument:
-          Version: '2012-10-17'
-          Statement:
-            - Effect: Allow
-              Principal:
-                Service: lambda.amazonaws.com
-              Action: sts:AssumeRole
-        Policies:
-          - PolicyName: ExecutionRolePolicy
-            PolicyDocument:
-              Version: '2012-10-17'
-              Statement:
-                - Effect: Allow
-                  Action:
-                    - 'logs:CreateLogGroup'
-                    - 'logs:CreateLogStream'
-                    - 'logs:PutLogEvents'
-                  Resource: 'arn:aws:logs:*:*:*'
-                - Effect: Allow
-                  Action:
-                    - 'ec2:CreateNetworkInterface'
-                    - 'ec2:DescribeNetworkInterfaces'
-                    - 'ec2:DeleteNetworkInterface'
-                  Resource: '*'
-                - Effect: Allow
-                  Action:
-                    - 'ec2:AssignPrivateIpAddresses'
-                    - 'ec2:UnassignPrivateIpAddresses'
-                  Resource: '*'
-                - Effect: Allow
-                  Action:
-                    - 'ec2:DescribeSecurityGroups'
-                  Resource: '*'
-                - Effect: Allow
-                  Action:
-                    - 'ec2:DescribeSubnets'
-                  Resource: '*'
-
-    CalendarFunction:
-      Type: AWS::Lambda::Function
-      Properties:
-        FunctionName: !Sub 'calendar-${AWS::Region}'
-        Runtime: nodejs18.x
-        Handler: calendar.handler
-        Role: !GetAtt LambdaExecutionRole.Arn
-        Environment:
-          BUCKET_NAME: !Ref ImagesBucket
-
-    UsersFunction:
-      Type: AWS::Lambda::Function
-      Properties:
-        FunctionName: !Sub 'users-${AWS::Region}'
-        Runtime: nodejs18.x
-        Handler: users.handler
-        Role: !GetAtt LambdaExecutionRole.Arn
-        Environment:
-          BUCKET_NAME: !Ref ImagesBucket
-
-    TargetGroup:
-      Type: AWS::ElasticLoadBalancingV2::TargetGroup
-      Properties:
-        HealthCheckIntervalSeconds: 30
-        HealthCheckPath: /
-        HealthCheckProtocol: HTTP
-        HealthCheckTimeoutSeconds: 10
-        Port: 80
-        Protocol: HTTP
-        Targets:
-          - Id: !Ref CalendarFunction
-            Port: 80
-          - Id: !Ref UsersFunction
-            Port: 80
-
-    ALBListener:
-      Type: AWS::ElasticLoadBalancingV2::Listener
-      Properties:
-        DefaultActions:
-          - Type: forward
-            TargetGroupArn: !Ref TargetGroup
-        LoadBalancerArn: !Ref ALB
-        Port: 80
-        Protocol: HTTP
-
-
-
     AdminsTable:
       Type: AWS::DynamoDB::Table
       Properties:
@@ -318,7 +211,57 @@ resources:
                 - DELETE
               MaxAge: 3000
 
+    ALBSecurityGroup:
+      Type: AWS::EC2::SecurityGroup
+      Properties:
+        GroupDescription: Allow HTTP inbound traffic
+        SecurityGroupIngress:
+          - IpProtocol: tcp
+            FromPort: 80
+            ToPort: 80
+            CidrIp: 0.0.0.0/0
+
+    ApplicationLoadBalancer:
+      Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+      Properties:
+        Name: MyApplicationLoadBalancer
+        Scheme: internet-facing
+        IpAddressType: ipv4
+        SecurityGroups:
+          - Ref: ALBSecurityGroup
+        Subnets: 
+          - Fn::Select:
+              - 0
+              - Fn::GetAZs: !Ref "AWS::Region"
+          - Fn::Select:
+              - 1
+              - Fn::GetAZs: !Ref "AWS::Region"
+        Type: application
+
+    ALBListener:
+      Type: AWS::ElasticLoadBalancingV2::Listener
+      Properties:
+        DefaultActions:
+          - Type: forward
+            TargetGroupArn: !Ref ALBTargetGroup
+        LoadBalancerArn: !Ref ApplicationLoadBalancer
+        Port: 80
+        Protocol: HTTP
+
+    ALBTargetGroup:
+      Type: AWS::ElasticLoadBalancingV2::TargetGroup
+      Properties:
+        HealthCheckEnabled: false
+        Port: 80
+        Protocol: HTTP
+        TargetType: lambda
+        Targets:
+          - Id: !GetAtt UsersLambdaFunction.Arn
+            Arn: !GetAtt UsersLambdaFunction.Arn
+          - Id: !GetAtt CalendarLambdaFunction.Arn
+            Arn: !GetAtt CalendarLambdaFunction.Arn
+
   Outputs:
-    ALBDNS:
-      Value: !GetAtt ALB.DNSName
-      Description: The DNS name of the ALB
+    ALBEndpoint:
+      Value: !GetAtt ApplicationLoadBalancer.DNSName
+      Description: Application Load Balancer Endpoint
