@@ -854,8 +854,9 @@ app.post("/api/users/create-user", rolesMiddleware(["admin", "branchadmin"]), as
     }
 });
 
-app.get("/api/users/check-email/:email", rolesMiddleware(["superadmin", "admin", "branchadmin", "hr", "employee"]), async function (req, res) {
+app.get("/api/users/check-email/:email/:id", rolesMiddleware(["superadmin", "admin", "branchadmin", "hr", "employee"]), async function (req, res) {
   const email = req.params.email;
+  const id = req.params.id;
 
   if (typeof email !== "string") {
       res.status(400).json({ error: errors.invalidInputData });
@@ -899,13 +900,35 @@ app.get("/api/users/check-email/:email", rolesMiddleware(["superadmin", "admin",
       const { Items: users } = await dynamoDbClient.send(new ScanCommand(empParams));
       const { Items: admins } = await dynamoDbClient.send(new ScanCommand(adminParams));
       const { Items: companies } = await dynamoDbClient.send(new ScanCommand(companyParams));
+if(users.length > 0){
+  if (users.length === 1 && users[0].userId === id) {
+    res.json({ emailExists: false });
+  } else {
+    res.json({ emailExists: true });
+  }
 
-      if (users.length > 0 || admins.length > 0 || companies.length > 0) {
-          res.json({ emailExists: true });
-      } else {
-          res.json({ emailExists: false });
-      }
-  } catch (error) {
+}
+else if(admins.length > 0){
+  if (admins.length === 1 && admins[0].userId === id) {
+    res.json({ emailExists: false });
+  } else {
+    res.json({ emailExists: true });
+  }
+
+  }
+  else if(companies.length > 0){
+    if (companies.length === 1 && companies[0].companyId === id) {
+      res.json({ emailExists: false });
+    } else {
+      res.json({ emailExists: true });
+    }
+
+  }
+  else{
+    res.json({ emailExists: false });
+  }
+  }
+   catch (error) {
       console.error("Error checking email existence:", error);
       res.status(500).json({ error: errors.emailCheckError });
   }
