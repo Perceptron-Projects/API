@@ -2018,6 +2018,40 @@ app.put(
   }
 );
 
+// mark check out from office
+
+// check out
+
+app.put(
+  "/api/users/employees/attendance/checkout/:attendanceId",
+  async function (req, res) {
+    const attendanceId = req.params.attendanceId;
+    console.log("attendanceId", attendanceId);
+    const params = {
+      TableName: ATTENDANCE_TABLE,
+      Key: {
+        attendanceId: attendanceId,
+        reqTime: req.body.reqTime,
+      },
+      UpdateExpression: "SET checkOut = :checkOut",
+      ExpressionAttributeValues: {
+        ":checkOut": new Date(req.body.checkOut).toISOString(),
+      },
+      ConditionExpression: "attribute_exists(attendanceId)",
+      ReturnValues: "ALL_NEW",
+    };
+    try {
+      await dynamoDbClient.send(new UpdateCommand(params));
+      res.json({ message: "Attendance updated successfully" });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ messages: "Failed to update attendance" });
+    }
+  }
+);
+
+
+
 
 
 
