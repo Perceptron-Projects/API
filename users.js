@@ -2210,6 +2210,73 @@ app.get(
   }
 );
 
+// get attendance by employee id by between start date and end date and current year
+app.get(
+  "/api/users/employees/attendance/:employeeId/:startDate/:endDate",
+  async function (req, res) {
+    const employeeId = req.params.employeeId;
+    const startDate = req.params.startDate;
+    const endDate = req.params.endDate;
+
+    const params = {
+      TableName: ATTENDANCE_TABLE,
+      FilterExpression:
+        "#employeeId = :employeeId AND #checkIn BETWEEN :startDate AND :endDate",
+      ExpressionAttributeNames: {
+        "#employeeId": "employeeId",
+        "#checkIn": "checkIn",
+      },
+      ExpressionAttributeValues: {
+        ":employeeId": employeeId,
+        ":startDate": startDate,
+        ":endDate": endDate,
+      },
+    };
+    try {
+      const { Items: attendance } = await dynamoDbClient.send(
+        new ScanCommand(params)
+      );
+
+      // calculate mon, tue, wed, thu, fri hours by checkIn and checkOut
+      const workedHours = {
+        mon: 0,
+        tue: 0,
+        wed: 0,
+        thu: 0,
+        fri: 0,
+      };
+      attendance.forEach((attendance) => {
+        // if check attendance have checkIn and checkOut
+        if (attendance.checkIn && attendance.checkOut) {
+          const checkIn = new Date(attendance.checkIn);
+          const checkOut = new Date(attendance.checkOut);
+          const diffTime = Math.abs(checkOut - checkIn);
+          const diffHours = diffTime / (1000 * 60 * 60);
+          if (checkIn.getDay() === 1) {
+            workedHours.mon += Math.round(diffHours * 100) / 100;
+          } else if (checkIn.getDay() === 2) {
+            workedHours.tue += Math.round(diffHours * 100) / 100;
+          } else if (checkIn.getDay() === 3) {
+            workedHours.wed += Math.round(diffHours * 100) / 100;
+          } else if (checkIn.getDay() === 4) {
+            workedHours.thu += Math.round(diffHours * 100) / 100;
+          } else if (checkIn.getDay() === 5) {
+            workedHours.fri += Math.round(diffHours * 100) / 100;
+          }
+        }
+      });
+
+      res.json({
+        ...workedHours,
+        details: attendance,
+      });
+    } catch (error) {
+      res.status(500).json({ error });
+    }
+  }
+);
+
+
 
 // End of Amasha's code
 
