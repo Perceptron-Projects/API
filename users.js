@@ -2051,6 +2051,28 @@ app.put(
 );
 
 
+// new whf request
+
+app.post("/api/users/employees/attendance/request", async function (req, res) {
+  const params = {
+    TableName: ATTENDANCE_TABLE,
+    Item: {
+      attendanceId: uuidv4(),
+      reqTime: new Date().toISOString(),
+      whf: "pending",
+      ...req.body,
+    },
+  };
+
+  try {
+    await dynamoDbClient.send(new PutCommand(params));
+    res.json({
+      message: "Attendance added successfully",
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: errors.createUserError });
+  }
 
 
 
