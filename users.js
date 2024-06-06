@@ -1788,6 +1788,9 @@ app.post("/api/users/login", async function (req, res) {
   }
 });
 
+
+// Amasha's code
+
 //get all teams 
 
 app.get("/api/users/teams/all", async function (req, res) {
@@ -1966,12 +1969,71 @@ app.get("/api/users/company/employees/:companyId", async function (req, res) {
 });
 
 
+// check in from office
+app.post("/api/users/employees/attendance/checkin", async function (req, res) {
+  const params = {
+    TableName: ATTENDANCE_TABLE,
+    Item: {
+      attendanceId: uuidv4(),
+      reqTime: new Date().toUTCString(),
+      ...req.body,
+    },
+  };
+  try {
+    await dynamoDbClient.send(new PutCommand(params));
+    res.json({
+      message: "Attendance added successfully",
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: errors.createUserError });
+  }
+});
+
+app.put(
+  "/api/users/employees/attendance/checkin/:attendanceId",
+  async function (req, res) {
+    const attendanceId = req.params.attendanceId;
+    console.log("attendanceId", attendanceId);
+    const params = {
+      TableName: ATTENDANCE_TABLE,
+      Key: {
+        attendanceId: attendanceId,
+        reqTime: req.body.reqTime,
+      },
+      UpdateExpression: "SET checkIn = :checkIn",
+      ExpressionAttributeValues: {
+        ":checkIn": req.body.checkIn,
+      },
+      ConditionExpression: "attribute_exists(attendanceId)",
+      ReturnValues: "ALL_NEW",
+    };
+    try {
+      await dynamoDbClient.send(new UpdateCommand(params));
+      res.json({ message: "Attendance updated successfully" });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ messages: "Failed to update attendance" });
+    }
+  }
+);
+
+
+
+
+
+// End of Amasha's code
+
+
 
 function generateUniqueUserId() {
   const uuid = uuidv4(); // Generate a UUID
   const shortId = Buffer.from(uuid).toString('base64').replace(/=/g, '').slice(0, 5); // Convert UUID to Base64 and truncate
   return shortId;
 }
+
+
+
 
 
 module.exports.handler = serverless(app);
