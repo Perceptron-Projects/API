@@ -2144,6 +2144,37 @@ app.get("/api/users/attendance/request/:companyId", async function (req, res) {
   res.json(finalData);
 });
 
+// put response
+app.put(
+  "/api/users/employees/attendance/:attendanceId",
+  async function (req, res) {
+    const attendanceId = req.params.attendanceId;
+    console.log("attendanceId", attendanceId);
+
+    const params = {
+      TableName: ATTENDANCE_TABLE,
+      Key: {
+        attendanceId: attendanceId,
+        reqTime: req.body.reqTime,
+      },
+      UpdateExpression: "SET whf = :whf",
+
+      ExpressionAttributeValues: {
+        ":whf": req.body.whf,
+      },
+      ReturnValues: "ALL_NEW",
+    };
+
+    try {
+      const response = await dynamoDbClient.send(new UpdateCommand(params));
+      res.json(response);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: errors.createUserError });
+    }
+  }
+);
+
 
 // End of Amasha's code
 
