@@ -2073,7 +2073,30 @@ app.post("/api/users/employees/attendance/request", async function (req, res) {
     console.error(error);
     res.status(500).json({ error: errors.createUserError });
   }
+});
 
+// get all whf requests by companyId
+
+app.get("/api/users/attendance/request/:companyId", async function (req, res) {
+  const companyId = req.params.companyId;
+
+  const params = {
+    TableName: ATTENDANCE_TABLE,
+    FilterExpression: "#companyId = :companyId AND #whf = :whf",
+    ExpressionAttributeNames: {
+      "#companyId": "companyId",
+      "#whf": "whf",
+    },
+    ExpressionAttributeValues: {
+      ":companyId": companyId,
+      ":whf": "pending",
+    },
+  };
+  const { Items: attendance } = await dynamoDbClient.send(
+    new ScanCommand(params)
+  );
+  const employees = attendance.map((attendance) => attendance.employeeId);
+  const uniqueEmployees = [...new Set(employees)];
 
 
 
