@@ -2144,7 +2144,7 @@ app.get("/api/users/attendance/request/:companyId", async function (req, res) {
   res.json(finalData);
 });
 
-// put response
+// Update Employee Attendance Record
 app.put(
   "/api/users/employees/attendance/:attendanceId",
   async function (req, res) {
@@ -2172,6 +2172,41 @@ app.put(
       console.error(error);
       res.status(500).json({ error: errors.createUserError });
     }
+  }
+);
+
+
+// get latest whf request
+app.get(
+  "/api/users/employees/attendance/:employeeId",
+  async function (req, res) {
+    const employeeId = req.params.employeeId;
+    console.log("employeeId:", employeeId);
+
+    const params = {
+      TableName: ATTENDANCE_TABLE,
+
+      FilterExpression: "#employeeId = :employeeId",
+
+      ExpressionAttributeNames: {
+        "#employeeId": "employeeId",
+      },
+
+      ExpressionAttributeValues: {
+        ":employeeId": employeeId,
+      },
+
+      ScanIndexForward: false,
+    };
+    const { Items: attendance } = await dynamoDbClient.send(
+      new ScanCommand(params)
+    );
+    const latestAttendance = attendance.sort((a, b) => {
+      const dateA = new Date(a.reqTime);
+      const dateB = new Date(b.reqTime);
+      return dateB - dateA;
+    });
+    res.json(latestAttendance[0]);
   }
 );
 
