@@ -2098,6 +2098,31 @@ app.get("/api/users/attendance/request/:companyId", async function (req, res) {
   const employees = attendance.map((attendance) => attendance.employeeId);
   const uniqueEmployees = [...new Set(employees)];
 
+//get unique employees data from uniqueEmployees array and add to employeesData array
+
+  const getEmployeeData = async (employeeId) => {
+    return new Promise((resolve, reject) => {
+      const params = {
+        TableName: EMPLOYEES_TABLE,
+        Key: {
+          userId: employeeId,
+        },
+      };
+      dynamoDbClient.send(new GetCommand(params), (err, data) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(data.Item);
+        }
+      });
+    });
+  };
+
+  const employeeData = [];
+  for (const employeeId of uniqueEmployees) {
+    const employee = await getEmployeeData(employeeId);
+    employeeData.push(employee);
+  }
 
 
 
