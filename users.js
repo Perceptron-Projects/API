@@ -2125,6 +2125,25 @@ app.get("/api/users/attendance/request/:companyId", async function (req, res) {
   }
 
 
+  
+  // join employee data with attendance data
+
+  const finalData = attendance.map((attendance) => {
+    const employee = employeeData.find(
+      (employee) => employee.userId === attendance.employeeId
+    );
+    return {
+      ...attendance,
+      firstName: employee.firstName,
+      lastName: employee.lastName,
+      email: employee.email,
+      imageUrl: employee.imageUrl,
+    };
+  });
+
+  res.json(finalData);
+});
+
 
 // End of Amasha's code
 
