@@ -2044,4 +2044,27 @@ app.get(
   }
 );
 
+// get all leaves by employee id sort by date
+app.get("/api/users/employees/leave/:employeeId", async function (req, res) {
+  const employeeId = req.params.employeeId;
+  console.log("employeeId", employeeId);
+  const params = {
+    TableName: LEAVES_CALENDAR_TABLE,
+    FilterExpression: "#employeeId = :employeeId",
+    ExpressionAttributeNames: {
+      "#employeeId": "employeeId",
+    },
+    ExpressionAttributeValues: {
+      ":employeeId": employeeId,
+    },
+  };
+  const { Items: leaves } = await dynamoDbClient.send(new ScanCommand(params));
+  const sortedLeaves = leaves.sort((a, b) => {
+    const dateA = new Date(a.createdAt);
+    const dateB = new Date(b.createdAt);
+    return dateB - dateA;
+  });
+  res.json(sortedLeaves);
+});
+
 module.exports.handler = serverless(app);
