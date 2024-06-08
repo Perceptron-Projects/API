@@ -2,11 +2,14 @@ require('dotenv').config();
 const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
 const {
   DynamoDBDocumentClient,
+  QueryCommand,
+  QueryFilters,
   GetCommand,
   PutCommand,
   UpdateCommand,
   DeleteCommand,
   ScanCommand,
+  BatchGetCommand,
 } = require("@aws-sdk/lib-dynamodb");
 const express = require("express");
 const serverless = require("serverless-http");
@@ -34,6 +37,7 @@ const COMPANY_TABLE = process.env.COMPANY_TABLE;
 const ATTENDANCE_TABLE = process.env.ATTENDANCE_TABLE;
 const JWT_SECRET = process.env.JWT_SECRET; 
 const companyDefaultImage = urls.companyDefaultImage;
+const LEAVES_CALENDAR_TABLE = process.env.LEAVES_CALENDAR_TABLE;
 
 const client = new DynamoDBClient();
 const dynamoDbClient = DynamoDBDocumentClient.from(client);
@@ -1949,6 +1953,33 @@ function generateUniqueUserId() {
   const shortId = Buffer.from(uuid).toString('base64').replace(/=/g, '').slice(0, 5); // Convert UUID to Base64 and truncate
   return shortId;
 }
+
+
+// leave request api
+
+// new leave request
+app.post("/api/users/employees/leave/request", async function (req, res) {
+  // console.log("req.body", req.body);
+  const params = {
+    TableName: LEAVES_CALENDAR_TABLE,
+    Item: {
+      leaveId: uuidv4(),
+      createdAt: new Date().toUTCString(),
+      status: "pending",
+      ...req.body,
+    },
+  };
+  try {
+    await dynamoDbClient.send(new PutCommand(params));
+    res.json({
+      message: "Leave added successfully",
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: errors.createUserError });
+  }
+});
+
 
 
 module.exports.handler = serverless(app);
