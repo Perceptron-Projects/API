@@ -10,6 +10,7 @@ const {
   DeleteCommand,
   ScanCommand,
   BatchGetCommand,
+
 } = require("@aws-sdk/lib-dynamodb");
 const express = require("express");
 const serverless = require("serverless-http");
@@ -858,8 +859,9 @@ app.post("/api/users/create-user", rolesMiddleware(["admin", "branchadmin"]), as
     }
 });
 
-app.get("/api/users/check-email/:email", rolesMiddleware(["superadmin", "admin", "branchadmin", "hr", "employee"]), async function (req, res) {
+app.get("/api/users/check-email/:email/:id", rolesMiddleware(["superadmin", "admin", "branchadmin", "hr", "employee"]), async function (req, res) {
   const email = req.params.email;
+  const id = req.params.id;
 
   if (typeof email !== "string") {
       res.status(400).json({ error: errors.invalidInputData });
@@ -903,13 +905,35 @@ app.get("/api/users/check-email/:email", rolesMiddleware(["superadmin", "admin",
       const { Items: users } = await dynamoDbClient.send(new ScanCommand(empParams));
       const { Items: admins } = await dynamoDbClient.send(new ScanCommand(adminParams));
       const { Items: companies } = await dynamoDbClient.send(new ScanCommand(companyParams));
+if(users.length > 0){
+  if (users.length === 1 && users[0].userId === id) {
+    res.json({ emailExists: false });
+  } else {
+    res.json({ emailExists: true });
+  }
 
-      if (users.length > 0 || admins.length > 0 || companies.length > 0) {
-          res.json({ emailExists: true });
-      } else {
-          res.json({ emailExists: false });
-      }
-  } catch (error) {
+}
+else if(admins.length > 0){
+  if (admins.length === 1 && admins[0].userId === id) {
+    res.json({ emailExists: false });
+  } else {
+    res.json({ emailExists: true });
+  }
+
+  }
+  else if(companies.length > 0){
+    if (companies.length === 1 && companies[0].companyId === id) {
+      res.json({ emailExists: false });
+    } else {
+      res.json({ emailExists: true });
+    }
+
+  }
+  else{
+    res.json({ emailExists: false });
+  }
+  }
+   catch (error) {
       console.error("Error checking email existence:", error);
       res.status(500).json({ error: errors.emailCheckError });
   }
@@ -1769,6 +1793,9 @@ app.post("/api/users/login", async function (req, res) {
   }
 });
 
+
+// Amasha's code
+
 //get all teams 
 
 app.get("/api/users/teams/all", async function (req, res) {
@@ -1921,6 +1948,69 @@ app.post("/api/users/teams", async function (req, res) {
   }
 });
 
+
+// check in from office
+app.post("/api/users/employees/attendance/checkin", async function (req, res) {
+  const params = {
+    TableName: ATTENDANCE_TABLE,
+    Item: {
+      attendanceId: uuidv4(),
+      reqTime: new Date().toUTCString(),
+      ...req.body,
+    },
+  };
+  try {
+    await dynamoDbClient.send(new PutCommand(params));
+    res.json({
+      message: "Attendance added successfully",
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: errors.createUserError });
+  }
+});
+
+app.put(
+  "/api/users/employees/attendance/checkin/:attendanceId",
+  async function (req, res) {
+    const attendanceId = req.params.attendanceId;
+    console.log("attendanceId", attendanceId);
+    const params = {
+      TableName: ATTENDANCE_TABLE,
+      Key: {
+        attendanceId: attendanceId,
+        reqTime: req.body.reqTime,
+      },
+      UpdateExpression: "SET checkIn = :checkIn",
+      ExpressionAttributeValues: {
+        ":checkIn": req.body.checkIn,
+      },
+      ConditionExpression: "attribute_exists(attendanceId)",
+      ReturnValues: "ALL_NEW",
+    };
+    try {
+      await dynamoDbClient.send(new UpdateCommand(params));
+      res.json({ message: "Attendance updated successfully" });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ messages: "Failed to update attendance" });
+    }
+  }
+);
+
+
+
+
+
+
+
+// End of Amasha's code
+
+
+
+
+//get employees by company id
+
 app.get("/api/users/company/employees/:companyId", async function (req, res) {
   console.log("api called");
 
@@ -1945,6 +2035,318 @@ app.get("/api/users/company/employees/:companyId", async function (req, res) {
   );
   res.json(employees);
 });
+
+
+// check in from office
+app.post("/api/users/employees/attendance/checkin", async function (req, res) {
+  const params = {
+    TableName: ATTENDANCE_TABLE,
+    Item: {
+      attendanceId: uuidv4(),
+      reqTime: new Date().toUTCString(),
+      ...req.body,
+    },
+  };
+  try {
+    await dynamoDbClient.send(new PutCommand(params));
+    res.json({
+      message: "Attendance added successfully",
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: errors.createUserError });
+  }
+});
+
+app.put(
+  "/api/users/employees/attendance/checkin/:attendanceId",
+  async function (req, res) {
+    const attendanceId = req.params.attendanceId;
+    console.log("attendanceId", attendanceId);
+    const params = {
+      TableName: ATTENDANCE_TABLE,
+      Key: {
+        attendanceId: attendanceId,
+        reqTime: req.body.reqTime,
+      },
+      UpdateExpression: "SET checkIn = :checkIn",
+      ExpressionAttributeValues: {
+        ":checkIn": req.body.checkIn,
+      },
+      ConditionExpression: "attribute_exists(attendanceId)",
+      ReturnValues: "ALL_NEW",
+    };
+    try {
+      await dynamoDbClient.send(new UpdateCommand(params));
+      res.json({ message: "Attendance updated successfully" });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ messages: "Failed to update attendance" });
+    }
+  }
+);
+
+// mark check out from office
+
+// check out
+
+app.put(
+  "/api/users/employees/attendance/checkout/:attendanceId",
+  async function (req, res) {
+    const attendanceId = req.params.attendanceId;
+    console.log("attendanceId", attendanceId);
+    const params = {
+      TableName: ATTENDANCE_TABLE,
+      Key: {
+        attendanceId: attendanceId,
+        reqTime: req.body.reqTime,
+      },
+      UpdateExpression: "SET checkOut = :checkOut",
+      ExpressionAttributeValues: {
+        ":checkOut": new Date(req.body.checkOut).toISOString(),
+      },
+      ConditionExpression: "attribute_exists(attendanceId)",
+      ReturnValues: "ALL_NEW",
+    };
+    try {
+      await dynamoDbClient.send(new UpdateCommand(params));
+      res.json({ message: "Attendance updated successfully" });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ messages: "Failed to update attendance" });
+    }
+  }
+);
+
+
+// new whf request
+
+app.post("/api/users/employees/attendance/request", async function (req, res) {
+  const params = {
+    TableName: ATTENDANCE_TABLE,
+    Item: {
+      attendanceId: uuidv4(),
+      reqTime: new Date().toISOString(),
+      whf: "pending",
+      ...req.body,
+    },
+  };
+
+  try {
+    await dynamoDbClient.send(new PutCommand(params));
+    res.json({
+      message: "Attendance added successfully",
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: errors.createUserError });
+  }
+});
+
+// get all whf requests by companyId
+
+app.get("/api/users/attendance/request/:companyId", async function (req, res) {
+  const companyId = req.params.companyId;
+
+  const params = {
+    TableName: ATTENDANCE_TABLE,
+    FilterExpression: "#companyId = :companyId AND #whf = :whf",
+    ExpressionAttributeNames: {
+      "#companyId": "companyId",
+      "#whf": "whf",
+    },
+    ExpressionAttributeValues: {
+      ":companyId": companyId,
+      ":whf": "pending",
+    },
+  };
+  const { Items: attendance } = await dynamoDbClient.send(
+    new ScanCommand(params)
+  );
+  const employees = attendance.map((attendance) => attendance.employeeId);
+  const uniqueEmployees = [...new Set(employees)];
+
+//get unique employees data from uniqueEmployees array and add to employeesData array
+
+  const getEmployeeData = async (employeeId) => {
+    return new Promise((resolve, reject) => {
+      const params = {
+        TableName: EMPLOYEES_TABLE,
+        Key: {
+          userId: employeeId,
+        },
+      };
+      dynamoDbClient.send(new GetCommand(params), (err, data) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(data.Item);
+        }
+      });
+    });
+  };
+
+  const employeeData = [];
+  for (const employeeId of uniqueEmployees) {
+    const employee = await getEmployeeData(employeeId);
+    employeeData.push(employee);
+  }
+
+
+  
+  // join employee data with attendance data
+
+  const finalData = attendance.map((attendance) => {
+    const employee = employeeData.find(
+      (employee) => employee.userId === attendance.employeeId
+    );
+    return {
+      ...attendance,
+      firstName: employee.firstName,
+      lastName: employee.lastName,
+      email: employee.email,
+      imageUrl: employee.imageUrl,
+    };
+  });
+
+  res.json(finalData);
+});
+
+// Update Employee Attendance Record
+app.put(
+  "/api/users/employees/attendance/:attendanceId",
+  async function (req, res) {
+    const attendanceId = req.params.attendanceId;
+    console.log("attendanceId", attendanceId);
+
+    const params = {
+      TableName: ATTENDANCE_TABLE,
+      Key: {
+        attendanceId: attendanceId,
+        reqTime: req.body.reqTime,
+      },
+      UpdateExpression: "SET whf = :whf",
+
+      ExpressionAttributeValues: {
+        ":whf": req.body.whf,
+      },
+      ReturnValues: "ALL_NEW",
+    };
+
+    try {
+      const response = await dynamoDbClient.send(new UpdateCommand(params));
+      res.json(response);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: errors.createUserError });
+    }
+  }
+);
+
+
+// get latest whf request
+app.get(
+  "/api/users/employees/attendance/:employeeId",
+  async function (req, res) {
+    const employeeId = req.params.employeeId;
+    console.log("employeeId:", employeeId);
+
+    const params = {
+      TableName: ATTENDANCE_TABLE,
+
+      FilterExpression: "#employeeId = :employeeId",
+
+      ExpressionAttributeNames: {
+        "#employeeId": "employeeId",
+      },
+
+      ExpressionAttributeValues: {
+        ":employeeId": employeeId,
+      },
+
+      ScanIndexForward: false,
+    };
+    const { Items: attendance } = await dynamoDbClient.send(
+      new ScanCommand(params)
+    );
+    const latestAttendance = attendance.sort((a, b) => {
+      const dateA = new Date(a.reqTime);
+      const dateB = new Date(b.reqTime);
+      return dateB - dateA;
+    });
+    res.json(latestAttendance[0]);
+  }
+);
+
+// get attendance by employee id by between start date and end date and current year
+app.get(
+  "/api/users/employees/attendance/:employeeId/:startDate/:endDate",
+  async function (req, res) {
+    const employeeId = req.params.employeeId;
+    const startDate = req.params.startDate;
+    const endDate = req.params.endDate;
+
+    const params = {
+      TableName: ATTENDANCE_TABLE,
+      FilterExpression:
+        "#employeeId = :employeeId AND #checkIn BETWEEN :startDate AND :endDate",
+      ExpressionAttributeNames: {
+        "#employeeId": "employeeId",
+        "#checkIn": "checkIn",
+      },
+      ExpressionAttributeValues: {
+        ":employeeId": employeeId,
+        ":startDate": startDate,
+        ":endDate": endDate,
+      },
+    };
+    try {
+      const { Items: attendance } = await dynamoDbClient.send(
+        new ScanCommand(params)
+      );
+
+      // calculate mon, tue, wed, thu, fri hours by checkIn and checkOut
+      const workedHours = {
+        mon: 0,
+        tue: 0,
+        wed: 0,
+        thu: 0,
+        fri: 0,
+      };
+      attendance.forEach((attendance) => {
+        // if check attendance have checkIn and checkOut
+        if (attendance.checkIn && attendance.checkOut) {
+          const checkIn = new Date(attendance.checkIn);
+          const checkOut = new Date(attendance.checkOut);
+          const diffTime = Math.abs(checkOut - checkIn);
+          const diffHours = diffTime / (1000 * 60 * 60);
+          if (checkIn.getDay() === 1) {
+            workedHours.mon += Math.round(diffHours * 100) / 100;
+          } else if (checkIn.getDay() === 2) {
+            workedHours.tue += Math.round(diffHours * 100) / 100;
+          } else if (checkIn.getDay() === 3) {
+            workedHours.wed += Math.round(diffHours * 100) / 100;
+          } else if (checkIn.getDay() === 4) {
+            workedHours.thu += Math.round(diffHours * 100) / 100;
+          } else if (checkIn.getDay() === 5) {
+            workedHours.fri += Math.round(diffHours * 100) / 100;
+          }
+        }
+      });
+
+      res.json({
+        ...workedHours,
+        details: attendance,
+      });
+    } catch (error) {
+      res.status(500).json({ error });
+    }
+  }
+);
+
+
+
+// End of Amasha's code
 
 
 
