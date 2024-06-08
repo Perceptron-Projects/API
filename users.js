@@ -2067,4 +2067,34 @@ app.get("/api/users/employees/leave/:employeeId", async function (req, res) {
   res.json(sortedLeaves);
 });
 
+//  get all approved leaves by employee id and reduce by types
+app.get("/api/users/employees/leave/approved/:employeeId", async function (req, res) {
+  const employeeId = req.params.employeeId;
+  // console.log("employeeId", employeeId);
+  const params = {
+      TableName: LEAVES_CALENDAR_TABLE,
+      FilterExpression: "#employeeId = :employeeId AND #status = :status",
+      ExpressionAttributeNames: {
+          "#employeeId": "employeeId",
+          "#status": "status",
+      },
+      ExpressionAttributeValues: {
+          ":employeeId": employeeId,
+          ":status": "approved",
+      },
+  };
+  const { Items: leaves } = await dynamoDbClient.send(
+      new ScanCommand(params)
+  );
+  const leaveTypes = leaves.reduce((acc, leave) => {
+      if (!acc[leave.leaveType]) {
+          acc[leave.leaveType] = 0;
+      }
+      acc[leave.leaveType]++;
+      return acc;
+  }, {});
+
+  res.json(leaveTypes);
+});
+
 module.exports.handler = serverless(app);
