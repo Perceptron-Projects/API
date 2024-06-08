@@ -1980,6 +1980,68 @@ app.post("/api/users/employees/leave/request", async function (req, res) {
   }
 });
 
+// get all pending leaves request by company id
+app.get(
+  "/api/users/employees/leave/request/pending/:companyId",
+  async function (req, res) {
+    const companyId = req.params.companyId;
+    console.log("companyId", companyId);
+    const params = {
+      TableName: LEAVES_CALENDAR_TABLE,
+      FilterExpression: "#companyId = :companyId AND #status = :status",
+      ExpressionAttributeNames: {
+        "#companyId": "companyId",
+        "#status": "status",
+      },
+      ExpressionAttributeValues: {
+        ":companyId": companyId,
 
+        ":status": "pending",
+      },
+    };
+    const { Items: leaves } = await dynamoDbClient.send(
+      new ScanCommand(params)
+    );
+
+    const getEmployeeData = async (employeeId) => {
+      return new Promise((resolve, reject) => {
+        const params = {
+          TableName: EMPLOYEES_TABLE,
+          Key: {
+            userId: employeeId,
+          },
+        };
+        dynamoDbClient.send(new GetCommand(params), (err, data) => {
+          if (err) {
+            reject(err);
+          } else {
+            resolve(data.Item);
+          }
+        });
+      });
+    };
+
+    const employees = leaves.map((leave) => leave.employeeId);
+    const uniqueEmployees = [...new Set(employees)];
+    const employeeData = [];
+    for (const employeeId of uniqueEmployees) {
+      const employee = await getEmployeeData(employeeId);
+      employeeData.push(employee);
+    }
+    const finalData = leaves.map((leave) => {
+      const employee = employeeData.find(
+        (employee) => employee.userId === leave.employeeId
+      );
+      return {
+        ...leave,
+        firstName: employee.firstName,
+        lastName: employee.lastName,
+        email: employee.email,
+        imageUrl: employee.imageUrl,
+      };
+    });
+    res.json(finalData);
+  }
+);
 
 module.exports.handler = serverless(app);
