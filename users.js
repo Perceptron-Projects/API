@@ -2,12 +2,14 @@ require('dotenv').config();
 const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
 const {
   DynamoDBDocumentClient,
+ 
+  QueryFilters,
   GetCommand,
   PutCommand,
   UpdateCommand,
   DeleteCommand,
   ScanCommand,
-
+  BatchGetCommand,
 
 } = require("@aws-sdk/lib-dynamodb");
 const express = require("express");
@@ -36,6 +38,7 @@ const COMPANY_TABLE = process.env.COMPANY_TABLE;
 const ATTENDANCE_TABLE = process.env.ATTENDANCE_TABLE;
 const JWT_SECRET = process.env.JWT_SECRET; 
 const companyDefaultImage = urls.companyDefaultImage;
+const LEAVES_CALENDAR_TABLE = process.env.LEAVES_CALENDAR_TABLE;
 
 const client = new DynamoDBClient();
 const dynamoDbClient = DynamoDBDocumentClient.from(client);
@@ -2352,6 +2355,195 @@ function generateUniqueUserId() {
   const shortId = Buffer.from(uuid).toString('base64').replace(/=/g, '').slice(0, 5); // Convert UUID to Base64 and truncate
   return shortId;
 }
+
+
+// leave request api
+
+// new leave request
+app.post("/api/users/employees/leave/request", async function (req, res) {
+  // console.log("req.body", req.body);
+  const params = {
+    TableName: LEAVES_CALENDAR_TABLE,
+    Item: {
+      leaveId: uuidv4(),
+      createdAt: new Date().toUTCString(),
+      status: "pending",
+      ...req.body,
+    },
+  };
+  try {
+    await dynamoDbClient.send(new PutCommand(params));
+    res.json({
+      message: "Leave added successfully",
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: errors.createUserError });
+  }
+});
+
+// get all pending leaves request by company id
+app.get(
+  "/api/users/employees/leave/request/pending/:companyId",
+  async function (req, res) {
+    const companyId = req.params.companyId;
+    console.log("companyId", companyId);
+    const params = {
+      TableName: LEAVES_CALENDAR_TABLE,
+      FilterExpression: "#companyId = :companyId AND #status = :status",
+      ExpressionAttributeNames: {
+        "#companyId": "companyId",
+        "#status": "status",
+      },
+      ExpressionAttributeValues: {
+        ":companyId": companyId,
+
+        ":status": "pending",
+      },
+    };
+    const { Items: leaves } = await dynamoDbClient.send(
+      new ScanCommand(params)
+    );
+
+    const getEmployeeData = async (employeeId) => {
+      return new Promise((resolve, reject) => {
+        const params = {
+          TableName: EMPLOYEES_TABLE,
+          Key: {
+            userId: employeeId,
+          },
+        };
+        dynamoDbClient.send(new GetCommand(params), (err, data) => {
+          if (err) {
+            reject(err);
+          } else {
+            resolve(data.Item);
+          }
+        });
+      });
+    };
+
+    const employees = leaves.map((leave) => leave.employeeId);
+    const uniqueEmployees = [...new Set(employees)];
+    const employeeData = [];
+    for (const employeeId of uniqueEmployees) {
+      const employee = await getEmployeeData(employeeId);
+      employeeData.push(employee);
+    }
+    const finalData = leaves.map((leave) => {
+      const employee = employeeData.find(
+        (employee) => employee.userId === leave.employeeId
+      );
+      return {
+        ...leave,
+        firstName: employee.firstName,
+        lastName: employee.lastName,
+        email: employee.email,
+        imageUrl: employee.imageUrl,
+      };
+    });
+    res.json(finalData);
+  }
+);
+
+// get all leaves by employee id sort by date
+app.get("/api/users/employees/leave/:employeeId", async function (req, res) {
+  const employeeId = req.params.employeeId;
+  console.log("employeeId", employeeId);
+  const params = {
+    TableName: LEAVES_CALENDAR_TABLE,
+    FilterExpression: "#employeeId = :employeeId",
+    ExpressionAttributeNames: {
+      "#employeeId": "employeeId",
+    },
+    ExpressionAttributeValues: {
+      ":employeeId": employeeId,
+    },
+  };
+  const { Items: leaves } = await dynamoDbClient.send(new ScanCommand(params));
+  const sortedLeaves = leaves.sort((a, b) => {
+    const dateA = new Date(a.createdAt);
+    const dateB = new Date(b.createdAt);
+    return dateB - dateA;
+  });
+  res.json(sortedLeaves);
+});
+
+//  get all approved  leaves by employee id and reduce by types
+app.get(
+  "/api/users/employees/leave/approved/:employeeId",
+  async function (req, res) {
+    const employeeId = req.params.employeeId;
+    // console.log("employeeId", employeeId);
+    const params = {
+      TableName: LEAVES_CALENDAR_TABLE,
+      FilterExpression: "#employeeId = :employeeId AND #status = :status",
+      ExpressionAttributeNames: {
+        "#employeeId": "employeeId",
+        "#status": "status",
+      },
+      ExpressionAttributeValues: {
+        ":employeeId": employeeId,
+        ":status": "approved",
+      },
+    };
+    const { Items: leaves } = await dynamoDbClient.send(
+      new ScanCommand(params)
+    );
+    const leaveTypes = leaves.reduce((acc, leave) => {
+      if (!acc[leave.leaveType]) {
+        acc[leave.leaveType] = 0;
+      }
+      acc[leave.leaveType]++;
+      return acc;
+    }, {});
+
+    // calculate remaining leaves
+    const remainingLeaves = {
+      casual: 12 - leaveTypes.casual || 12,
+      fullDay: 12 - leaveTypes.fullDay || 12,
+      halfDay: 12 - leaveTypes.halfDay || 12,
+      medical: 12 - leaveTypes.medical || 12,
+    };
+
+    res.json({ leaveTypes, remainingLeaves });
+  }
+);
+// update leave request status
+
+app.put(
+  "/api/users/employees/leave/request/response/:leaveId",
+  async function (req, res) {
+    const leaveId = req.params.leaveId;
+    const { status, createdAt } = req.body;
+
+    const params = {
+      TableName: LEAVES_CALENDAR_TABLE,
+      Key: {
+        leaveId,
+        createdAt,
+      },
+      UpdateExpression: "set #status = :status",
+      ExpressionAttributeNames: {
+        "#status": "status",
+      },
+      ExpressionAttributeValues: {
+        ":status": status,
+      },
+    };
+    try {
+      await dynamoDbClient.send(new UpdateCommand(params));
+      res.json({
+        message: "Leave request status updated successfully",
+      });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: errors.createUserError });
+    }
+  }
+);
+
+   
 
 
 module.exports.handler = serverless(app);
