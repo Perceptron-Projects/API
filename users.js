@@ -2097,4 +2097,39 @@ app.get("/api/users/employees/leave/approved/:employeeId", async function (req, 
   res.json(leaveTypes);
 });
 
+// update leave request status
+
+app.put(
+  "/api/users/employees/leave/request/response/:leaveId",
+  async function (req, res) {
+    const leaveId = req.params.leaveId;
+    const { status, createdAt } = req.body;
+
+    const params = {
+      TableName: LEAVES_CALENDAR_TABLE,
+      Key: {
+        leaveId,
+        createdAt,
+      },
+      UpdateExpression: "set #status = :status",
+      ExpressionAttributeNames: {
+        "#status": "status",
+      },
+      ExpressionAttributeValues: {
+        ":status": status,
+      },
+    };
+    try {
+      await dynamoDbClient.send(new UpdateCommand(params));
+      res.json({
+        message: "Leave request status updated successfully",
+      });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: errors.createUserError });
+    }
+  }
+);
+
+
 module.exports.handler = serverless(app);
