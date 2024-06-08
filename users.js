@@ -2,7 +2,7 @@ require('dotenv').config();
 const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
 const {
   DynamoDBDocumentClient,
-  QueryCommand,
+ 
   QueryFilters,
   GetCommand,
   PutCommand,
@@ -2067,36 +2067,46 @@ app.get("/api/users/employees/leave/:employeeId", async function (req, res) {
   res.json(sortedLeaves);
 });
 
-//  get all approved leaves by employee id and reduce by types
-app.get("/api/users/employees/leave/approved/:employeeId", async function (req, res) {
-  const employeeId = req.params.employeeId;
-  // console.log("employeeId", employeeId);
-  const params = {
+//  get all approved  leaves by employee id and reduce by types
+app.get(
+  "/api/users/employees/leave/approved/:employeeId",
+  async function (req, res) {
+    const employeeId = req.params.employeeId;
+    // console.log("employeeId", employeeId);
+    const params = {
       TableName: LEAVES_CALENDAR_TABLE,
       FilterExpression: "#employeeId = :employeeId AND #status = :status",
       ExpressionAttributeNames: {
-          "#employeeId": "employeeId",
-          "#status": "status",
+        "#employeeId": "employeeId",
+        "#status": "status",
       },
       ExpressionAttributeValues: {
-          ":employeeId": employeeId,
-          ":status": "approved",
+        ":employeeId": employeeId,
+        ":status": "approved",
       },
-  };
-  const { Items: leaves } = await dynamoDbClient.send(
+    };
+    const { Items: leaves } = await dynamoDbClient.send(
       new ScanCommand(params)
-  );
-  const leaveTypes = leaves.reduce((acc, leave) => {
+    );
+    const leaveTypes = leaves.reduce((acc, leave) => {
       if (!acc[leave.leaveType]) {
-          acc[leave.leaveType] = 0;
+        acc[leave.leaveType] = 0;
       }
       acc[leave.leaveType]++;
       return acc;
-  }, {});
+    }, {});
 
-  res.json(leaveTypes);
-});
+    // calculate remaining leaves
+    const remainingLeaves = {
+      casual: 12 - leaveTypes.casual || 12,
+      fullDay: 12 - leaveTypes.fullDay || 12,
+      halfDay: 12 - leaveTypes.halfDay || 12,
+      medical: 12 - leaveTypes.medical || 12,
+    };
 
+    res.json({ leaveTypes, remainingLeaves });
+  }
+);
 // update leave request status
 
 app.put(
@@ -2130,6 +2140,8 @@ app.put(
     }
   }
 );
+
+   
 
 
 module.exports.handler = serverless(app);
