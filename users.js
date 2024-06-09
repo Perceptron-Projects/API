@@ -7,6 +7,8 @@ const {
   UpdateCommand,
   DeleteCommand,
   ScanCommand,
+  BatchGetCommand,
+
 } = require("@aws-sdk/lib-dynamodb");
 const express = require("express");
 const serverless = require("serverless-http");
@@ -34,6 +36,7 @@ const COMPANY_TABLE = process.env.COMPANY_TABLE;
 const ATTENDANCE_TABLE = process.env.ATTENDANCE_TABLE;
 const JWT_SECRET = process.env.JWT_SECRET; 
 const companyDefaultImage = urls.companyDefaultImage;
+const LEAVES_CALENDAR_TABLE = process.env.LEAVES_CALENDAR_TABLE;
 
 const client = new DynamoDBClient();
 const dynamoDbClient = DynamoDBDocumentClient.from(client);
@@ -960,8 +963,8 @@ console.log(params);
 );
 
 app.post("/api/users/company/create", rolesMiddleware(["superadmin"]), async function (req, res) {
-  const { companyName, email, contactNo, longitude, latitude, radiusFromCenterOfCompany } = req.body;
-
+  const { companyName, email, contactNo, location, radiusFromCenterOfCompany } = req.body;
+const { longitude, latitude } = location;
   if (
     typeof companyName !== "string" ||
     typeof email !== "string" ||
@@ -1030,8 +1033,8 @@ app.post("/api/users/company/create", rolesMiddleware(["superadmin"]), async fun
 
 
 app.post("/api/users/company/create-branch", rolesMiddleware(["admin"]), async function (req, res) {
-  const { branchName, companyId, contactNo, email, latitude, longitude, radiusFromCenterOfBranch } = req.body;
-console.log(req.body);
+  const { branchName, companyId, contactNo, email, location, radiusFromCenterOfBranch } = req.body;
+const { longitude, latitude } = location;
   if (
     typeof branchName !== "string" ||
     typeof companyId !== "string" ||
@@ -1366,8 +1369,8 @@ app.get("/api/users/company/branches/:companyId", rolesMiddleware(["superadmin",
 app.patch("/api/users/company/branch/:branchId", rolesMiddleware(["superadmin","admin"]), async function (req, res) {
   try {
     const branchId = req.params.branchId;
-    const { branchName, contactNo, email, latitude, longitude, radiusFromCenterOfBranch } = req.body;
-
+    const { branchName, contactNo, email, location, radiusFromCenterOfBranch } = req.body;
+const { longitude, latitude } = location;
     // Validate input data
     if (
       typeof branchName !== "string" ||
@@ -1651,7 +1654,9 @@ app.patch("/api/users/admins/:id", rolesMiddleware(["superadmin"]), async functi
 app.patch("/api/users/company/:id", rolesMiddleware(["superadmin"]), async function (req, res) {
   try {
     const companyId = req.params.id;
-    const { companyName, latitude, email: companyEmail, contactNo, longitude, radiusFromCenterOfCompany } = req.body;
+    const { companyName, location, email: companyEmail, contactNo, radiusFromCenterOfCompany } = req.body;
+    const { latitude, longitude } = location;
+
     // Validate input data
     if (
       typeof companyName !== "string" ||
@@ -1696,10 +1701,12 @@ app.patch("/api/users/company/:id", rolesMiddleware(["superadmin"]), async funct
     const updatedCompany = {
       ...existingCompany,
       companyName: companyName || existingCompany.companyName,
-      latitude: latitude || existingCompany.latitude,
-      email: companyEmail || existingCompany.companyEmail,
+      companyEmail: companyEmail || existingCompany.companyEmail,
       contactNo: contactNo || existingCompany.contactNo,
-      longitude: longitude || existingCompany.longitude,
+      location: {
+        latitude: latitude || existingCompany.latitude,
+        longitude: longitude || existingCompany.longitude,
+      },
       radiusFromCenterOfCompany: radiusFromCenterOfCompany || existingCompany.radiusFromCenterOfCompany,
       companyImageUrl: imageUrl || existingCompany.companyImageUrl || companyDefaultImage,
     };
@@ -1710,22 +1717,25 @@ app.patch("/api/users/company/:id", rolesMiddleware(["superadmin"]), async funct
       Key: {
         companyId: companyId,
       },
-      UpdateExpression: "SET companyName = :companyName, latitude = :latitude, companyEmail = :companyEmail, contactNo = :contactNo, longitude = :longitude, radiusFromCenterOfCompany = :radiusFromCenterOfCompany, companyImageUrl = :companyImageUrl",
+      UpdateExpression: "SET companyName = :companyName, #loc.#lat = :latitude, companyEmail = :companyEmail, contactNo = :contactNo, #loc.#long = :longitude, radiusFromCenterOfCompany = :radiusFromCenterOfCompany, companyImageUrl = :companyImageUrl",
+      ExpressionAttributeNames: {
+        "#loc": "location",
+        "#lat": "latitude",
+        "#long": "longitude",
+      },
       ExpressionAttributeValues: {
         ":companyName": updatedCompany.companyName,
-        ":latitude": updatedCompany.latitude,
-        ":companyEmail": updatedCompany.email,
+        ":latitude": updatedCompany.location.latitude,
+        ":companyEmail": updatedCompany.companyEmail,
         ":contactNo": updatedCompany.contactNo,
-        ":longitude": updatedCompany.longitude,
+        ":longitude": updatedCompany.location.longitude,
         ":radiusFromCenterOfCompany": updatedCompany.radiusFromCenterOfCompany,
         ":companyImageUrl": updatedCompany.companyImageUrl,
       },
       ReturnValues: "ALL_NEW",
     };
-    
 
     const { Attributes: updatedAttributes } = await dynamoDbClient.send(new UpdateCommand(updateParams));
-console.log(updatedAttributes);
     res.json(updatedAttributes);
   } catch (error) {
     console.error(error);
@@ -1787,6 +1797,9 @@ app.post("/api/users/login", async function (req, res) {
     return res.status(500).json({ error: errors.getUsersError });
   }
 });
+
+
+// Amasha's code
 
 //get all teams 
 
@@ -1940,6 +1953,69 @@ app.post("/api/users/teams", async function (req, res) {
   }
 });
 
+
+// check in from office
+app.post("/api/users/employees/attendance/checkin", async function (req, res) {
+  const params = {
+    TableName: ATTENDANCE_TABLE,
+    Item: {
+      attendanceId: uuidv4(),
+      reqTime: new Date().toUTCString(),
+      ...req.body,
+    },
+  };
+  try {
+    await dynamoDbClient.send(new PutCommand(params));
+    res.json({
+      message: "Attendance added successfully",
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: errors.createUserError });
+  }
+});
+
+app.put(
+  "/api/users/employees/attendance/checkin/:attendanceId",
+  async function (req, res) {
+    const attendanceId = req.params.attendanceId;
+    console.log("attendanceId", attendanceId);
+    const params = {
+      TableName: ATTENDANCE_TABLE,
+      Key: {
+        attendanceId: attendanceId,
+        reqTime: req.body.reqTime,
+      },
+      UpdateExpression: "SET checkIn = :checkIn",
+      ExpressionAttributeValues: {
+        ":checkIn": req.body.checkIn,
+      },
+      ConditionExpression: "attribute_exists(attendanceId)",
+      ReturnValues: "ALL_NEW",
+    };
+    try {
+      await dynamoDbClient.send(new UpdateCommand(params));
+      res.json({ message: "Attendance updated successfully" });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ messages: "Failed to update attendance" });
+    }
+  }
+);
+
+
+
+
+
+
+
+// End of Amasha's code
+
+
+
+
+//get employees by company id
+
 app.get("/api/users/company/employees/:companyId", async function (req, res) {
   console.log("api called");
 
@@ -1966,12 +2042,513 @@ app.get("/api/users/company/employees/:companyId", async function (req, res) {
 });
 
 
+// check in from office
+app.post("/api/users/employees/attendance/checkin", async function (req, res) {
+  const params = {
+    TableName: ATTENDANCE_TABLE,
+    Item: {
+      attendanceId: uuidv4(),
+      reqTime: new Date().toUTCString(),
+      ...req.body,
+    },
+  };
+  try {
+    await dynamoDbClient.send(new PutCommand(params));
+    res.json({
+      message: "Attendance added successfully",
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: errors.createUserError });
+  }
+});
+
+app.put(
+  "/api/users/employees/attendance/checkin/:attendanceId",
+  async function (req, res) {
+    const attendanceId = req.params.attendanceId;
+    console.log("attendanceId", attendanceId);
+    const params = {
+      TableName: ATTENDANCE_TABLE,
+      Key: {
+        attendanceId: attendanceId,
+        reqTime: req.body.reqTime,
+      },
+      UpdateExpression: "SET checkIn = :checkIn",
+      ExpressionAttributeValues: {
+        ":checkIn": req.body.checkIn,
+      },
+      ConditionExpression: "attribute_exists(attendanceId)",
+      ReturnValues: "ALL_NEW",
+    };
+    try {
+      await dynamoDbClient.send(new UpdateCommand(params));
+      res.json({ message: "Attendance updated successfully" });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ messages: "Failed to update attendance" });
+    }
+  }
+);
+
+// mark check out from office
+
+// check out
+
+app.put(
+  "/api/users/employees/attendance/checkout/:attendanceId",
+  async function (req, res) {
+    const attendanceId = req.params.attendanceId;
+    console.log("attendanceId", attendanceId);
+    const params = {
+      TableName: ATTENDANCE_TABLE,
+      Key: {
+        attendanceId: attendanceId,
+        reqTime: req.body.reqTime,
+      },
+      UpdateExpression: "SET checkOut = :checkOut",
+      ExpressionAttributeValues: {
+        ":checkOut": new Date(req.body.checkOut).toISOString(),
+      },
+      ConditionExpression: "attribute_exists(attendanceId)",
+      ReturnValues: "ALL_NEW",
+    };
+    try {
+      await dynamoDbClient.send(new UpdateCommand(params));
+      res.json({ message: "Attendance updated successfully" });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ messages: "Failed to update attendance" });
+    }
+  }
+);
+
+
+// new whf request
+
+app.post("/api/users/employees/attendance/request", async function (req, res) {
+  const params = {
+    TableName: ATTENDANCE_TABLE,
+    Item: {
+      attendanceId: uuidv4(),
+      reqTime: new Date().toISOString(),
+      whf: "pending",
+      ...req.body,
+    },
+  };
+
+  try {
+    await dynamoDbClient.send(new PutCommand(params));
+    res.json({
+      message: "Attendance added successfully",
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: errors.createUserError });
+  }
+});
+
+// get all whf requests by companyId
+
+app.get("/api/users/attendance/request/:companyId", async function (req, res) {
+  const companyId = req.params.companyId;
+
+  const params = {
+    TableName: ATTENDANCE_TABLE,
+    FilterExpression: "#companyId = :companyId AND #whf = :whf",
+    ExpressionAttributeNames: {
+      "#companyId": "companyId",
+      "#whf": "whf",
+    },
+    ExpressionAttributeValues: {
+      ":companyId": companyId,
+      ":whf": "pending",
+    },
+  };
+  const { Items: attendance } = await dynamoDbClient.send(
+    new ScanCommand(params)
+  );
+  const employees = attendance.map((attendance) => attendance.employeeId);
+  const uniqueEmployees = [...new Set(employees)];
+
+//get unique employees data from uniqueEmployees array and add to employeesData array
+
+  const getEmployeeData = async (employeeId) => {
+    return new Promise((resolve, reject) => {
+      const params = {
+        TableName: EMPLOYEES_TABLE,
+        Key: {
+          userId: employeeId,
+        },
+      };
+      dynamoDbClient.send(new GetCommand(params), (err, data) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(data.Item);
+        }
+      });
+    });
+  };
+
+  const employeeData = [];
+  for (const employeeId of uniqueEmployees) {
+    const employee = await getEmployeeData(employeeId);
+    employeeData.push(employee);
+  }
+
+
+  
+  // join employee data with attendance data
+
+  const finalData = attendance.map((attendance) => {
+    const employee = employeeData.find(
+      (employee) => employee.userId === attendance.employeeId
+    );
+    return {
+      ...attendance,
+      firstName: employee.firstName,
+      lastName: employee.lastName,
+      email: employee.email,
+      imageUrl: employee.imageUrl,
+    };
+  });
+
+  res.json(finalData);
+});
+
+// Update Employee Attendance Record
+app.put(
+  "/api/users/employees/attendance/:attendanceId",
+  async function (req, res) {
+    const attendanceId = req.params.attendanceId;
+    console.log("attendanceId", attendanceId);
+
+    const params = {
+      TableName: ATTENDANCE_TABLE,
+      Key: {
+        attendanceId: attendanceId,
+        reqTime: req.body.reqTime,
+      },
+      UpdateExpression: "SET whf = :whf",
+
+      ExpressionAttributeValues: {
+        ":whf": req.body.whf,
+      },
+      ReturnValues: "ALL_NEW",
+    };
+
+    try {
+      const response = await dynamoDbClient.send(new UpdateCommand(params));
+      res.json(response);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: errors.createUserError });
+    }
+  }
+);
+
+
+// get latest whf request
+app.get(
+  "/api/users/employees/attendance/:employeeId",
+  async function (req, res) {
+    const employeeId = req.params.employeeId;
+    console.log("employeeId:", employeeId);
+
+    const params = {
+      TableName: ATTENDANCE_TABLE,
+
+      FilterExpression: "#employeeId = :employeeId",
+
+      ExpressionAttributeNames: {
+        "#employeeId": "employeeId",
+      },
+
+      ExpressionAttributeValues: {
+        ":employeeId": employeeId,
+      },
+
+      ScanIndexForward: false,
+    };
+    const { Items: attendance } = await dynamoDbClient.send(
+      new ScanCommand(params)
+    );
+    const latestAttendance = attendance.sort((a, b) => {
+      const dateA = new Date(a.reqTime);
+      const dateB = new Date(b.reqTime);
+      return dateB - dateA;
+    });
+    res.json(latestAttendance[0]);
+  }
+);
+
+// get attendance by employee id by between start date and end date and current year
+app.get(
+  "/api/users/employees/attendance/:employeeId/:startDate/:endDate",
+  async function (req, res) {
+    const employeeId = req.params.employeeId;
+    const startDate = req.params.startDate;
+    const endDate = req.params.endDate;
+
+    const params = {
+      TableName: ATTENDANCE_TABLE,
+      FilterExpression:
+        "#employeeId = :employeeId AND #checkIn BETWEEN :startDate AND :endDate",
+      ExpressionAttributeNames: {
+        "#employeeId": "employeeId",
+        "#checkIn": "checkIn",
+      },
+      ExpressionAttributeValues: {
+        ":employeeId": employeeId,
+        ":startDate": startDate,
+        ":endDate": endDate,
+      },
+    };
+    try {
+      const { Items: attendance } = await dynamoDbClient.send(
+        new ScanCommand(params)
+      );
+
+      // calculate mon, tue, wed, thu, fri hours by checkIn and checkOut
+      const workedHours = {
+        mon: 0,
+        tue: 0,
+        wed: 0,
+        thu: 0,
+        fri: 0,
+      };
+      attendance.forEach((attendance) => {
+        // if check attendance have checkIn and checkOut
+        if (attendance.checkIn && attendance.checkOut) {
+          const checkIn = new Date(attendance.checkIn);
+          const checkOut = new Date(attendance.checkOut);
+          const diffTime = Math.abs(checkOut - checkIn);
+          const diffHours = diffTime / (1000 * 60 * 60);
+          if (checkIn.getDay() === 1) {
+            workedHours.mon += Math.round(diffHours * 100) / 100;
+          } else if (checkIn.getDay() === 2) {
+            workedHours.tue += Math.round(diffHours * 100) / 100;
+          } else if (checkIn.getDay() === 3) {
+            workedHours.wed += Math.round(diffHours * 100) / 100;
+          } else if (checkIn.getDay() === 4) {
+            workedHours.thu += Math.round(diffHours * 100) / 100;
+          } else if (checkIn.getDay() === 5) {
+            workedHours.fri += Math.round(diffHours * 100) / 100;
+          }
+        }
+      });
+
+      res.json({
+        ...workedHours,
+        details: attendance,
+      });
+    } catch (error) {
+      res.status(500).json({ error });
+    }
+  }
+);
+
+
+
+// End of Amasha's code
+
+
 
 function generateUniqueUserId() {
   const uuid = uuidv4(); // Generate a UUID
   const shortId = Buffer.from(uuid).toString('base64').replace(/=/g, '').slice(0, 5); // Convert UUID to Base64 and truncate
   return shortId;
 }
+
+
+// leave request api
+
+// new leave request
+app.post("/api/users/employees/leave/request", async function (req, res) {
+  // console.log("req.body", req.body);
+  const params = {
+    TableName: LEAVES_CALENDAR_TABLE,
+    Item: {
+      leaveId: uuidv4(),
+      createdAt: new Date().toUTCString(),
+      status: "pending",
+      ...req.body,
+    },
+  };
+  try {
+    await dynamoDbClient.send(new PutCommand(params));
+    res.json({
+      message: "Leave added successfully",
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: errors.createUserError });
+  }
+});
+
+// get all pending leaves request by company id
+app.get(
+  "/api/users/employees/leave/request/pending/:companyId",
+  async function (req, res) {
+    const companyId = req.params.companyId;
+    console.log("companyId", companyId);
+    const params = {
+      TableName: LEAVES_CALENDAR_TABLE,
+      FilterExpression: "#companyId = :companyId AND #status = :status",
+      ExpressionAttributeNames: {
+        "#companyId": "companyId",
+        "#status": "status",
+      },
+      ExpressionAttributeValues: {
+        ":companyId": companyId,
+
+        ":status": "pending",
+      },
+    };
+    const { Items: leaves } = await dynamoDbClient.send(
+      new ScanCommand(params)
+    );
+
+    const getEmployeeData = async (employeeId) => {
+      return new Promise((resolve, reject) => {
+        const params = {
+          TableName: EMPLOYEES_TABLE,
+          Key: {
+            userId: employeeId,
+          },
+        };
+        dynamoDbClient.send(new GetCommand(params), (err, data) => {
+          if (err) {
+            reject(err);
+          } else {
+            resolve(data.Item);
+          }
+        });
+      });
+    };
+
+    const employees = leaves.map((leave) => leave.employeeId);
+    const uniqueEmployees = [...new Set(employees)];
+    const employeeData = [];
+    for (const employeeId of uniqueEmployees) {
+      const employee = await getEmployeeData(employeeId);
+      employeeData.push(employee);
+    }
+    const finalData = leaves.map((leave) => {
+      const employee = employeeData.find(
+        (employee) => employee.userId === leave.employeeId
+      );
+      return {
+        ...leave,
+        firstName: employee.firstName,
+        lastName: employee.lastName,
+        email: employee.email,
+        imageUrl: employee.imageUrl,
+      };
+    });
+    res.json(finalData);
+  }
+);
+
+// get all leaves by employee id sort by date
+app.get("/api/users/employees/leave/:employeeId", async function (req, res) {
+  const employeeId = req.params.employeeId;
+  console.log("employeeId", employeeId);
+  const params = {
+    TableName: LEAVES_CALENDAR_TABLE,
+    FilterExpression: "#employeeId = :employeeId",
+    ExpressionAttributeNames: {
+      "#employeeId": "employeeId",
+    },
+    ExpressionAttributeValues: {
+      ":employeeId": employeeId,
+    },
+  };
+  const { Items: leaves } = await dynamoDbClient.send(new ScanCommand(params));
+  const sortedLeaves = leaves.sort((a, b) => {
+    const dateA = new Date(a.createdAt);
+    const dateB = new Date(b.createdAt);
+    return dateB - dateA;
+  });
+  res.json(sortedLeaves);
+});
+
+//  get all approved  leaves by employee id and reduce by types
+app.get(
+  "/api/users/employees/leave/approved/:employeeId",
+  async function (req, res) {
+    const employeeId = req.params.employeeId;
+    // console.log("employeeId", employeeId);
+    const params = {
+      TableName: LEAVES_CALENDAR_TABLE,
+      FilterExpression: "#employeeId = :employeeId AND #status = :status",
+      ExpressionAttributeNames: {
+        "#employeeId": "employeeId",
+        "#status": "status",
+      },
+      ExpressionAttributeValues: {
+        ":employeeId": employeeId,
+        ":status": "approved",
+      },
+    };
+    const { Items: leaves } = await dynamoDbClient.send(
+      new ScanCommand(params)
+    );
+    const leaveTypes = leaves.reduce((acc, leave) => {
+      if (!acc[leave.leaveType]) {
+        acc[leave.leaveType] = 0;
+      }
+      acc[leave.leaveType]++;
+      return acc;
+    }, {});
+
+    // calculate remaining leaves
+    const remainingLeaves = {
+      casual: 12 - leaveTypes.casual || 12,
+      fullDay: 12 - leaveTypes.fullDay || 12,
+      halfDay: 12 - leaveTypes.halfDay || 12,
+      medical: 12 - leaveTypes.medical || 12,
+    };
+
+    res.json({ leaveTypes, remainingLeaves });
+  }
+);
+// update leave request status
+
+app.put(
+  "/api/users/employees/leave/request/response/:leaveId",
+  async function (req, res) {
+    const leaveId = req.params.leaveId;
+    const { status, createdAt } = req.body;
+
+    const params = {
+      TableName: LEAVES_CALENDAR_TABLE,
+      Key: {
+        leaveId,
+        createdAt,
+      },
+      UpdateExpression: "set #status = :status",
+      ExpressionAttributeNames: {
+        "#status": "status",
+      },
+      ExpressionAttributeValues: {
+        ":status": status,
+      },
+    };
+    try {
+      await dynamoDbClient.send(new UpdateCommand(params));
+      res.json({
+        message: "Leave request status updated successfully",
+      });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: errors.createUserError });
+    }
+  }
+);
+
+   
 
 
 module.exports.handler = serverless(app);
