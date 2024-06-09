@@ -2,8 +2,6 @@ require('dotenv').config();
 const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
 const {
   DynamoDBDocumentClient,
- 
-  QueryFilters,
   GetCommand,
   PutCommand,
   UpdateCommand,
@@ -965,8 +963,8 @@ console.log(params);
 );
 
 app.post("/api/users/company/create", rolesMiddleware(["superadmin"]), async function (req, res) {
-  const { companyName, email, contactNo, longitude, latitude, radiusFromCenterOfCompany } = req.body;
-
+  const { companyName, email, contactNo, location, radiusFromCenterOfCompany } = req.body;
+const { longitude, latitude } = location;
   if (
     typeof companyName !== "string" ||
     typeof email !== "string" ||
@@ -1035,8 +1033,8 @@ app.post("/api/users/company/create", rolesMiddleware(["superadmin"]), async fun
 
 
 app.post("/api/users/company/create-branch", rolesMiddleware(["admin"]), async function (req, res) {
-  const { branchName, companyId, contactNo, email, latitude, longitude, radiusFromCenterOfBranch } = req.body;
-console.log(req.body);
+  const { branchName, companyId, contactNo, email, location, radiusFromCenterOfBranch } = req.body;
+const { longitude, latitude } = location;
   if (
     typeof branchName !== "string" ||
     typeof companyId !== "string" ||
@@ -1371,8 +1369,8 @@ app.get("/api/users/company/branches/:companyId", rolesMiddleware(["superadmin",
 app.patch("/api/users/company/branch/:branchId", rolesMiddleware(["superadmin","admin"]), async function (req, res) {
   try {
     const branchId = req.params.branchId;
-    const { branchName, contactNo, email, latitude, longitude, radiusFromCenterOfBranch } = req.body;
-
+    const { branchName, contactNo, email, location, radiusFromCenterOfBranch } = req.body;
+const { longitude, latitude } = location;
     // Validate input data
     if (
       typeof branchName !== "string" ||
@@ -1656,7 +1654,9 @@ app.patch("/api/users/admins/:id", rolesMiddleware(["superadmin"]), async functi
 app.patch("/api/users/company/:id", rolesMiddleware(["superadmin"]), async function (req, res) {
   try {
     const companyId = req.params.id;
-    const { companyName, latitude, email: companyEmail, contactNo, longitude, radiusFromCenterOfCompany } = req.body;
+    const { companyName, location, email: companyEmail, contactNo, radiusFromCenterOfCompany } = req.body;
+    const { latitude, longitude } = location;
+
     // Validate input data
     if (
       typeof companyName !== "string" ||
@@ -1701,10 +1701,12 @@ app.patch("/api/users/company/:id", rolesMiddleware(["superadmin"]), async funct
     const updatedCompany = {
       ...existingCompany,
       companyName: companyName || existingCompany.companyName,
-      latitude: latitude || existingCompany.latitude,
-      email: companyEmail || existingCompany.companyEmail,
+      companyEmail: companyEmail || existingCompany.companyEmail,
       contactNo: contactNo || existingCompany.contactNo,
-      longitude: longitude || existingCompany.longitude,
+      location: {
+        latitude: latitude || existingCompany.latitude,
+        longitude: longitude || existingCompany.longitude,
+      },
       radiusFromCenterOfCompany: radiusFromCenterOfCompany || existingCompany.radiusFromCenterOfCompany,
       companyImageUrl: imageUrl || existingCompany.companyImageUrl || companyDefaultImage,
     };
@@ -1715,22 +1717,25 @@ app.patch("/api/users/company/:id", rolesMiddleware(["superadmin"]), async funct
       Key: {
         companyId: companyId,
       },
-      UpdateExpression: "SET companyName = :companyName, latitude = :latitude, companyEmail = :companyEmail, contactNo = :contactNo, longitude = :longitude, radiusFromCenterOfCompany = :radiusFromCenterOfCompany, companyImageUrl = :companyImageUrl",
+      UpdateExpression: "SET companyName = :companyName, #loc.#lat = :latitude, companyEmail = :companyEmail, contactNo = :contactNo, #loc.#long = :longitude, radiusFromCenterOfCompany = :radiusFromCenterOfCompany, companyImageUrl = :companyImageUrl",
+      ExpressionAttributeNames: {
+        "#loc": "location",
+        "#lat": "latitude",
+        "#long": "longitude",
+      },
       ExpressionAttributeValues: {
         ":companyName": updatedCompany.companyName,
-        ":latitude": updatedCompany.latitude,
-        ":companyEmail": updatedCompany.email,
+        ":latitude": updatedCompany.location.latitude,
+        ":companyEmail": updatedCompany.companyEmail,
         ":contactNo": updatedCompany.contactNo,
-        ":longitude": updatedCompany.longitude,
+        ":longitude": updatedCompany.location.longitude,
         ":radiusFromCenterOfCompany": updatedCompany.radiusFromCenterOfCompany,
         ":companyImageUrl": updatedCompany.companyImageUrl,
       },
       ReturnValues: "ALL_NEW",
     };
-    
 
     const { Attributes: updatedAttributes } = await dynamoDbClient.send(new UpdateCommand(updateParams));
-console.log(updatedAttributes);
     res.json(updatedAttributes);
   } catch (error) {
     console.error(error);
