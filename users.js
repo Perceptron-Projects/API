@@ -1953,7 +1953,6 @@ app.post("/api/users/teams", async function (req, res) {
   }
 });
 
-
 // check in from office
 app.post("/api/users/employees/attendance/checkin", async function (req, res) {
   const params = {
