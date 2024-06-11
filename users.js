@@ -2505,10 +2505,10 @@ app.get(
 
     // calculate remaining leaves
     const remainingLeaves = {
-      casual: 12 - leaveTypes.casual || 12,
+      casual: 07 - leaveTypes.casual || 07,
       fullDay: 12 - leaveTypes.fullDay || 12,
-      halfDay: 12 - leaveTypes.halfDay || 12,
-      medical: 12 - leaveTypes.medical || 12,
+      halfDay: 03 - leaveTypes.halfDay || 03,
+      medical: 07 - leaveTypes.medical || 07,
     };
 
     res.json({ leaveTypes, remainingLeaves });
