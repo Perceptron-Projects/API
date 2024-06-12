@@ -189,7 +189,7 @@ app.get("/api/users/attendance/checkForTheDay/:employeeId", rolesMiddleware(["hr
   }
 });
 
-app.get("/api/users/:userId", rolesMiddleware(["admin","branchadmin","hr","employee"]), async function (req, res) { 
+app.get("/api/users/:userId", rolesMiddleware(["admin","branchadmin","hr","employee","supervisor"]), async function (req, res) { 
   const params = {
     TableName: EMPLOYEES_TABLE,
     Key: {
