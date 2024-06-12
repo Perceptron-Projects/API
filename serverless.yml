@@ -133,14 +133,14 @@ resources:
       Type: AWS::DynamoDB::Table
       Properties:
         AttributeDefinitions:
-          - AttributeName: Day
+          - AttributeName: leaveId
             AttributeType: S
-          - AttributeName: EmployeeId
+          - AttributeName: createdAt
             AttributeType: S
         KeySchema:
-          - AttributeName: Day
+          - AttributeName: leaveId
             KeyType: HASH
-          - AttributeName: EmployeeId
+          - AttributeName: createdAt
             KeyType: RANGE
         BillingMode: PAY_PER_REQUEST
         TableName: ${self:custom.leavesCalendarTableName}
