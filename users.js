@@ -1922,13 +1922,13 @@ app.put("/api/users/team/:teamId", async function (req, res) {
 
 // add new team
 
-app.post("/api/users/teams", async function (req, res) {
+app.post("/api/users/teams", rolesMiddleware(["supervisor"]),async function (req, res) {
   if (req.body.teamsImage) {
     try {
       const uploadResult = await uploadImage(req.body.teamsImage);
       req.body.teamsImage = uploadResult.imageUrl;
     } catch (error) {
-      console.error("Error:", error);
+      console.error("Image Error:", error);
       res.status(500).json({ error: errors.imageUploadError });
       return;
     }
