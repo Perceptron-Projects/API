@@ -78,7 +78,7 @@ custom:
   adminsTableName: admins
   employeesTableName: employees
   holidayCalendarTableName: holidayCalender
-  leavesCalendarTableName: leavesCalender
+  leavesCalendarTableName: leavesCalenders
   companyTableName: company
   teamTableName: team
   attendanceTableName: attendance
