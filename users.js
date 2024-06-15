@@ -189,7 +189,7 @@ app.get("/api/users/attendance/checkForTheDay/:employeeId", rolesMiddleware(["hr
   }
 });
 
-app.get("/api/users/:userId", rolesMiddleware(["admin","branchadmin","hr","employee"]), async function (req, res) { 
+app.get("/api/users/:userId", rolesMiddleware(["admin","branchadmin","hr","employee","supervisor"]), async function (req, res) { 
   const params = {
     TableName: EMPLOYEES_TABLE,
     Key: {
@@ -1922,13 +1922,13 @@ app.put("/api/users/team/:teamId", async function (req, res) {
 
 // add new team
 
-app.post("/api/users/teams", async function (req, res) {
+app.post("/api/users/teams", rolesMiddleware(["supervisor"]),async function (req, res) {
   if (req.body.teamsImage) {
     try {
       const uploadResult = await uploadImage(req.body.teamsImage);
       req.body.teamsImage = uploadResult.imageUrl;
     } catch (error) {
-      console.error("Error:", error);
+      console.error("Image Error:", error);
       res.status(500).json({ error: errors.imageUploadError });
       return;
     }
@@ -1952,7 +1952,6 @@ app.post("/api/users/teams", async function (req, res) {
     res.status(500).json({ error: errors.createUserError });
   }
 });
-
 
 // check in from office
 app.post("/api/users/employees/attendance/checkin", async function (req, res) {
