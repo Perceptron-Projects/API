@@ -24,13 +24,13 @@ provider:
             - s3:ListObjects
             - s3:DeleteObject
           Resource:
-            - Fn::GetAtt: [ AdminsTable, Arn ]
-            - Fn::GetAtt: [ EmployeesTable, Arn ]
-            - Fn::GetAtt: [ HolidayCalendar, Arn ]
-            - Fn::GetAtt: [ LeavesCalendar, Arn ]
-            - Fn::GetAtt: [ CompanyTable, Arn ]
-            - Fn::GetAtt: [ TeamTable, Arn ]
-            - Fn::GetAtt: [ AttendanceTable, Arn ]
+            - Fn::GetAtt: [AdminsTable, Arn]
+            - Fn::GetAtt: [EmployeesTable, Arn]
+            - Fn::GetAtt: [HolidayCalendar, Arn]
+            - Fn::GetAtt: [LeavesCalendar, Arn]
+            - Fn::GetAtt: [CompanyTable, Arn]
+            - Fn::GetAtt: [TeamTable, Arn]
+            - Fn::GetAtt: [AttendanceTable, Arn]
             - Fn::Sub: arn:aws:s3:::${self:custom.imagesBucketName}
             - Fn::Sub: arn:aws:s3:::${self:custom.imagesBucketName}/*
 
@@ -59,13 +59,6 @@ provider:
     IMAGES_BUCKET_NAME: ${self:custom.imagesBucketName}
 
 functions:
-  api:
-    handler: index.handler
-    events:
-      - httpApi:
-          path: /api/{proxy+}
-          method: ANY
-
   users:
     handler: users.handler
     timeout: 900
