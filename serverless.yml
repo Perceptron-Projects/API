@@ -89,7 +89,7 @@ custom:
   companyTableName: company
   teamTableName: team
   attendanceTableName: attendance
-  imagesBucketName: uom-fit-ams-images-bucket
+  imagesBucketName: uom-fit-ams-images-bucket-1
 
 resources:
   Resources:
