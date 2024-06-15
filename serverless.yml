@@ -77,11 +77,11 @@ functions:
 custom:
   adminsTableName: admins
   employeesTableName: employees
-  holidayCalendarTableName: holidayCalender
+  holidayCalendarTableName: holidayCalenders
   leavesCalendarTableName: leavesCalenders
   companyTableName: company
-  teamTableName: team
-  attendanceTableName: attendance
+  teamTableName: teams
+  attendanceTableName: attendances
   imagesBucketName: uom-fit-ams-images-bucket
 
 resources:
