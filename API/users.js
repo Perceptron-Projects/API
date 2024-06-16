@@ -39,7 +39,14 @@ const ses = new AWS.SES({ region: 'us-east-1' });
 app.use(express.json({ limit: "50mb" }));
 
 app.use((req, res, next) => {
-  if (req.path !== "/api/users/login") {
+  const openPaths = [
+    "/api/users/login",
+    "/api/users/forget-password",
+    "/api/users/compare-otp",
+    "/api/users/reset-password"
+  ];
+
+  if (!openPaths.includes(req.path)) {
     authenticateToken(req, res, next);
   } else {
     next();
@@ -84,6 +91,7 @@ app.get("/api/users/isWithinRadius/:companyId", rolesMiddleware(["admin","hr","e
     res.status(500).json({ error: errors.userWithinRadiusError });
   }
 });
+
 app.post("/api/users/attendance/mark", rolesMiddleware(["hr","employee"]), async function (req, res) {
   try {
     const { employeeId, companyId, time, isCheckedIn, isCheckedOut, isWorkFromHome } = req.body;
@@ -157,6 +165,7 @@ app.post("/api/users/attendance/mark", rolesMiddleware(["hr","employee"]), async
     return res.status(500).json({ error: errors.markAttendanceError });
   }
 });
+
 app.get("/api/users/attendance/checkForTheDay/:employeeId", rolesMiddleware(["hr", "employee"]), async function (req, res) {
   try {
     const { employeeId } = req.params;
@@ -1004,204 +1013,392 @@ app.post("/api/users/login", async function (req, res) {
 });
 
 
+// // Route for handling forgot password requests
+// app.post('/api/users/forget-password', async (req, res) => {
+//   try {
+//     const { email } = req.body;
+//     console.log('Email:', email);
+
+//     // Check if the user exists in the database
+
+//     // Placeholder for logic to find userId based on email
+//     let userId;
+
+//     // Assuming email can directly be used to query or scan for the userId
+//     const params = {
+//       TableName: EMPLOYEES_TABLE,
+//       // Use a query if 'email' is indexed or the primary key
+//       KeyConditionExpression: 'email = :email',
+//       ExpressionAttributeValues: {
+//         ':email': email,
+//       },
+//     };
+
+//     const { Items } = await dynamoDbClient.send(new ScanCommand({
+//       TableName: EMPLOYEES_TABLE,
+//       FilterExpression: 'email = :email',
+//       ExpressionAttributeValues: {
+//         ':email': email,
+//       },
+//     }));
+    
+
+//     //const { Items } = await dynamoDbClient.send(new QueryCommand(params));
+    
+//     // If Items is not empty, extract userId
+//     if (Items.length > 0) {
+//       userId = Items[0].userId; // Assuming the first match is what we need
+//     } else {
+//       // Handle case where no user is found with the given email
+//       return res.status(404).json({ message: 'No user found with the provided email' });
+//     }
+
+//     // Generate a random token using uuid and set expiration time to 15 minutes from now
+//     const otp = uuidv4();
+//     const expirationTime = new Date();
+//     expirationTime.setMinutes(expirationTime.getMinutes() + 15); // Token expires in 15 minutes
+
+//     await dynamoDbClient.send(new UpdateCommand({
+//       TableName: EMPLOYEES_TABLE,
+//       Key: {
+//         userId: userId, 
+//       },
+//       UpdateExpression: 'SET otp = :otp, expiresAt = :expiresAt',
+//       ExpressionAttributeValues: {
+//         ':otp': otp,
+//         ':expiresAt': expirationTime.getTime(), 
+//       },
+//     }));
+
+
+//     // Send email with the token
+//     await ses.sendEmail({
+//       Source: 'kj.me.cd@gmail.com',
+//       Destination: {
+//         ToAddresses: [email],
+//       },
+//       Message: {
+//         Subject: {
+//           Data: 'Password Reset Request',
+//         },
+//         Body: {
+//           Text: {
+//             Data: `Your password reset token is: ${otp}`,
+//           },
+//         },
+//       },
+//     }).promise();
+
+//     // Return success response
+//     res.status(200).json({ message: 'Password reset token sent successfully via email' });
+//   } catch (error) {
+//     console.error('Error:', error);
+//     // Return error response
+//     res.status(500).json({ message: 'Error processing forgot password request' });
+//   }
+// });
+
+
+// // Route for comparing the token
+// app.post('/api/users/compare-token', async (req, res) => {
+//   try {
+//     const { email, otp: token } = req.body;
+//     // Retrieve the token and expiration time from DynamoDB based on the user's email
+//     const data = await dynamoDB.get({
+//       TableName: EMPLOYEES_TABLE,
+//       Key: { email }
+//     }).promise();
+
+//     if (!data.Item) {
+//       return res.status(400).json({ message: 'Invalid email or token' });
+//     }
+
+//     const { token: otp, expiresAt } = data.Item;
+
+//     // Check if the provided token matches the stored token
+//     if (otp !== storedToken) {
+//       return res.status(400).json({ message: 'Invalid email or token' });
+//     }
+
+//     // Check if the token is expired
+//     if (Date.now() > expiresAt) {
+//       return res.status(400).json({ message: 'Token has expired' });
+//     }
+
+//     // Return success response
+//     return res.status(200).json({ message: 'Token is valid' });
+//   } catch (error) {
+//     console.error('Error:', error);
+//     // Return error response
+//     return res.status(500).json({ message: 'Error comparing token' });
+//   }
+// });
+
+// app.post('/api/users/compare-otp', async (req, res) => {
+//   try {
+//     const { email, otp: providedOtp } = req.body;
+
+    
+//     const { Items } = await dynamoDbClient.send(new ScanCommand({
+//       TableName: EMPLOYEES_TABLE,
+//       FilterExpression: 'email = :email',
+//       ExpressionAttributeValues: {
+//         ':email': email,
+//       },
+//     }));
+
+//     if (!Items) {
+//       return res.status(400).json({ message: 'Invalid email or OTP' });
+//     }
+
+//     // Assuming the first match is what we need
+//     const { otp: storedOtp, expiresAt } = Items[0];
+
+//     // Check if the provided OTP matches the stored OTP
+//     if (providedOtp !== storedOtp) {
+//       return res.status(400).json({ message: 'Invalid email or OTP' });
+//     }
+
+//     // Check if the OTP is expired
+//     if (Date.now() > expiresAt) {
+//       return res.status(400).json({ message: 'OTP has expired' });
+//     }
+
+//     // OTP is valid and not expired, proceed with the password reset flow
+//     return res.status(200).json({ message: 'OTP is valid' });
+//   } catch (error) {
+//     console.error('Error:', error);
+//     // Return error response
+//     return res.status(500).json({ message: 'Error comparing OTP' });
+//   }
+// });
+
+// app.post('/api/users/reset-password', async (req, res) => {
+//   try {
+//     const { email, otp: providedOtp, newPassword } = req.body;
+
+//     // Retrieve the OTP and expiration time from DynamoDB based on the user's email
+//     const { Items } = await dynamoDbClient.send(new ScanCommand({
+//       TableName: EMPLOYEES_TABLE,
+//       FilterExpression: 'email = :email',
+//       ExpressionAttributeValues: {
+//         ':email': email,
+//       },
+//     }));
+
+//     if (!Items || Items.length === 0) {
+//       return res.status(400).json({ message: 'Invalid request' });
+//     }
+
+//     // Hash the new password
+//     const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+//     const updateResponse = await dynamoDbClient.send(new UpdateCommand({
+//       TableName: EMPLOYEES_TABLE,
+//       Key: {
+//         'userId': Items[0].userId,
+//       },
+//       UpdateExpression: 'SET password = :password, otp = :nullValue, expiresAt = :pastTime',
+//       ExpressionAttributeValues: {
+//         ':password': hashedPassword,
+//         ':nullValue': null, 
+//         ':pastTime': 0, 
+//       },
+//     }));
+
+//     return res.status(200).json({ message: 'Password reset successfully' });
+//   } catch (error) {
+//     console.error('Error:', error);
+//     // Return error response
+//     return res.status(500).json({ message: 'Error resetting password' });
+//   }
+// });
+
 // Route for handling forgot password requests
 app.post('/api/users/forget-password', async (req, res) => {
   try {
     const { email } = req.body;
     console.log('Email:', email);
 
-    // Check if the user exists in the database
-
-    // Placeholder for logic to find userId based on email
-    let userId;
-
-    // Assuming email can directly be used to query or scan for the userId
     const params = {
       TableName: EMPLOYEES_TABLE,
-      // Use a query if 'email' is indexed or the primary key
-      KeyConditionExpression: 'email = :email',
+      FilterExpression: 'email = :email',
       ExpressionAttributeValues: {
         ':email': email,
       },
     };
 
-    const { Items } = await dynamoDbClient.send(new ScanCommand({
-      TableName: EMPLOYEES_TABLE,
-      FilterExpression: 'email = :email',
-      ExpressionAttributeValues: {
-        ':email': email,
-      },
-    }));
-    
+    const { Items } = await dynamoDbClient.send(new ScanCommand(params));
 
-    //const { Items } = await dynamoDbClient.send(new QueryCommand(params));
-    
-    // If Items is not empty, extract userId
-    if (Items.length > 0) {
-      userId = Items[0].userId; // Assuming the first match is what we need
-    } else {
-      // Handle case where no user is found with the given email
+    if (Items.length === 0) {
       return res.status(404).json({ message: 'No user found with the provided email' });
     }
 
-    // Generate a random token using uuid and set expiration time to 15 minutes from now
+    const userId = Items[0].userId;
+
     const otp = uuidv4();
     const expirationTime = new Date();
-    expirationTime.setMinutes(expirationTime.getMinutes() + 15); // Token expires in 15 minutes
+    expirationTime.setMinutes(expirationTime.getMinutes() + 15);
 
     await dynamoDbClient.send(new UpdateCommand({
       TableName: EMPLOYEES_TABLE,
-      Key: {
-        userId: userId, 
-      },
+      Key: { userId },
       UpdateExpression: 'SET otp = :otp, expiresAt = :expiresAt',
       ExpressionAttributeValues: {
         ':otp': otp,
-        ':expiresAt': expirationTime.getTime(), 
+        ':expiresAt': expirationTime.getTime(),
       },
     }));
 
-
-    // Send email with the token
     await ses.sendEmail({
       Source: 'kj.me.cd@gmail.com',
-      Destination: {
-        ToAddresses: [email],
-      },
+      Destination: { ToAddresses: [email] },
       Message: {
-        Subject: {
-          Data: 'Password Reset Request',
-        },
-        Body: {
-          Text: {
-            Data: `Your password reset token is: ${otp}`,
-          },
-        },
+        Subject: { Data: 'Password Reset Request' },
+        Body: { Text: { Data: `Your password reset token is: ${otp}` } },
       },
     }).promise();
 
-    // Return success response
     res.status(200).json({ message: 'Password reset token sent successfully via email' });
   } catch (error) {
     console.error('Error:', error);
-    // Return error response
     res.status(500).json({ message: 'Error processing forgot password request' });
   }
 });
 
-
-// Route for comparing the token
-app.post('/api/users/compare-token', async (req, res) => {
-  try {
-    const { email, otp: token } = req.body;
-    // Retrieve the token and expiration time from DynamoDB based on the user's email
-    const data = await dynamoDB.get({
-      TableName: EMPLOYEES_TABLE,
-      Key: { email }
-    }).promise();
-
-    if (!data.Item) {
-      return res.status(400).json({ message: 'Invalid email or token' });
-    }
-
-    const { token: otp, expiresAt } = data.Item;
-
-    // Check if the provided token matches the stored token
-    if (otp !== storedToken) {
-      return res.status(400).json({ message: 'Invalid email or token' });
-    }
-
-    // Check if the token is expired
-    if (Date.now() > expiresAt) {
-      return res.status(400).json({ message: 'Token has expired' });
-    }
-
-    // Return success response
-    return res.status(200).json({ message: 'Token is valid' });
-  } catch (error) {
-    console.error('Error:', error);
-    // Return error response
-    return res.status(500).json({ message: 'Error comparing token' });
-  }
-});
-
+// Route for comparing the OTP
 app.post('/api/users/compare-otp', async (req, res) => {
   try {
     const { email, otp: providedOtp } = req.body;
 
-    
-    const { Items } = await dynamoDbClient.send(new ScanCommand({
+    const params = {
       TableName: EMPLOYEES_TABLE,
       FilterExpression: 'email = :email',
       ExpressionAttributeValues: {
         ':email': email,
       },
-    }));
+    };
 
-    if (!Items) {
+    const { Items } = await dynamoDbClient.send(new ScanCommand(params));
+
+    if (Items.length === 0) {
       return res.status(400).json({ message: 'Invalid email or OTP' });
     }
 
-    // Assuming the first match is what we need
     const { otp: storedOtp, expiresAt } = Items[0];
 
-    // Check if the provided OTP matches the stored OTP
     if (providedOtp !== storedOtp) {
       return res.status(400).json({ message: 'Invalid email or OTP' });
     }
 
-    // Check if the OTP is expired
     if (Date.now() > expiresAt) {
       return res.status(400).json({ message: 'OTP has expired' });
     }
 
-    // OTP is valid and not expired, proceed with the password reset flow
     return res.status(200).json({ message: 'OTP is valid' });
   } catch (error) {
     console.error('Error:', error);
-    // Return error response
-    return res.status(500).json({ message: 'Error comparing OTP' });
+    res.status(500).json({ message: 'Error comparing OTP' });
   }
 });
 
+// Route for resetting the password
 app.post('/api/users/reset-password', async (req, res) => {
   try {
     const { email, otp: providedOtp, newPassword } = req.body;
 
-    // Retrieve the OTP and expiration time from DynamoDB based on the user's email
-    const { Items } = await dynamoDbClient.send(new ScanCommand({
+    const params = {
       TableName: EMPLOYEES_TABLE,
       FilterExpression: 'email = :email',
       ExpressionAttributeValues: {
         ':email': email,
       },
-    }));
+    };
 
-    if (!Items || Items.length === 0) {
+    const { Items } = await dynamoDbClient.send(new ScanCommand(params));
+
+    if (Items.length === 0) {
       return res.status(400).json({ message: 'Invalid request' });
     }
 
-    // Hash the new password
+    const { otp: storedOtp, expiresAt, userId } = Items[0];
+
+    if (providedOtp !== storedOtp) {
+      return res.status(400).json({ message: 'Invalid email or OTP' });
+    }
+
+    if (Date.now() > expiresAt) {
+      return res.status(400).json({ message: 'OTP has expired' });
+    }
+
     const hashedPassword = await bcrypt.hash(newPassword, 10);
 
-    const updateResponse = await dynamoDbClient.send(new UpdateCommand({
+    await dynamoDbClient.send(new UpdateCommand({
       TableName: EMPLOYEES_TABLE,
-      Key: {
-        'userId': Items[0].userId,
-      },
+      Key: { userId },
       UpdateExpression: 'SET password = :password, otp = :nullValue, expiresAt = :pastTime',
       ExpressionAttributeValues: {
         ':password': hashedPassword,
-        ':nullValue': null, 
-        ':pastTime': 0, 
+        ':nullValue': null,
+        ':pastTime': 0,
       },
     }));
 
     return res.status(200).json({ message: 'Password reset successfully' });
   } catch (error) {
     console.error('Error:', error);
-    // Return error response
-    return res.status(500).json({ message: 'Error resetting password' });
+    res.status(500).json({ message: 'Error resetting password' });
+  }
+});
+
+
+app.get("/api/users/attendance/getByDateRange", rolesMiddleware(["hr","employee"]), async function (req, res) {
+  try {
+    const { employeeId, companyId, startDate, endDate } = req.query;
+
+    console.log("Request received with parameters:", { employeeId, companyId, startDate, endDate });
+
+    // Validate input data
+    if (!employeeId || !companyId || !startDate || !endDate) {
+      console.log("Invalid input data:", { employeeId, companyId, startDate, endDate });
+      return res.status(400).json({ error: errors.invalidInputData });
+    }
+
+    const startDateISO = new Date(startDate).toISOString().split('T')[0];
+    const endDateISO = new Date(endDate).toISOString().split('T')[0];
+
+    console.log("Formatted startDate and endDate:", { startDateISO, endDateISO });
+
+    // Scan attendance records for the specified date range
+    const attendanceParams = {
+      TableName: ATTENDANCE_TABLE,
+      FilterExpression: "begins_with(#attendanceId, :employeeId) AND #date BETWEEN :startDate AND :endDate",
+      ExpressionAttributeNames: {
+        "#attendanceId": "attendanceId",
+        "#date": "date"
+      },
+      ExpressionAttributeValues: {
+        ":employeeId": employeeId,
+        ":startDate": startDateISO,
+        ":endDate": endDateISO
+      },
+    };
+
+    console.log("Scanning DynamoDB with parameters:", attendanceParams);
+
+    const { Items: attendanceRecords } = await dynamoDbClient.send(new ScanCommand(attendanceParams));
+
+    console.log("Attendance records fetched:", attendanceRecords);
+
+    if (attendanceRecords.length === 0) {
+      console.log("No attendance records found for the specified date range.");
+      return res.status(404).json({ error: errors.noAttendanceRecordsFound });
+    }
+
+    return res.json({ attendanceRecords });
+  } catch (error) {
+    console.error("Error fetching attendance records:", error);
+    return res.status(500).json({ error: errors.getAttendanceError });
   }
 });
 
