@@ -47,7 +47,7 @@ describe('uploadImage', () => {
 
   it('should upload an image to S3 and return the image URL', async () => {
     const imageDataUri = `data:image/jpeg;base64,${base64Image}`;
-    const expectedImageUrl = `https://${process.env.IMAGES_BUCKET_NAME}.s3.amazonaws.com/mocked-uuid.jpg`;
+    const expectedImageUrl = `https://d3fsn5oaxfqfda.cloudfront.net/mocked-uuid.jpg`;
 
     const result = await uploadImage(imageDataUri);
 
