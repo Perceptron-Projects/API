@@ -1150,55 +1150,7 @@ app.post('/api/users/reset-password', async (req, res) => {
   }
 });
 
-app.get("/api/users/attendance/getByDateRange", rolesMiddleware(["hr","employee"]), async function (req, res) {
-  try {
-    const { employeeId, companyId, startDate, endDate } = req.query;
 
-    console.log("Request received with parameters:", { employeeId, companyId, startDate, endDate });
-
-    // Validate input data
-    if (!employeeId || !companyId || !startDate || !endDate) {
-      console.log("Invalid input data:", { employeeId, companyId, startDate, endDate });
-      return res.status(400).json({ error: errors.invalidInputData });
-    }
-
-    const startDateISO = new Date(startDate).toISOString().split('T')[0];
-    const endDateISO = new Date(endDate).toISOString().split('T')[0];
-
-    console.log("Formatted startDate and endDate:", { startDateISO, endDateISO });
-
-    // Scan attendance records for the specified date range
-    const attendanceParams = {
-      TableName: ATTENDANCE_TABLE,
-      FilterExpression: "begins_with(#attendanceId, :employeeId) AND #date BETWEEN :startDate AND :endDate",
-      ExpressionAttributeNames: {
-        "#attendanceId": "attendanceId",
-        "#date": "date"
-      },
-      ExpressionAttributeValues: {
-        ":employeeId": employeeId,
-        ":startDate": startDateISO,
-        ":endDate": endDateISO
-      },
-    };
-
-    console.log("Scanning DynamoDB with parameters:", attendanceParams);
-
-    const { Items: attendanceRecords } = await dynamoDbClient.send(new ScanCommand(attendanceParams));
-
-    console.log("Attendance records fetched:", attendanceRecords);
-
-    if (attendanceRecords.length === 0) {
-      console.log("No attendance records found for the specified date range.");
-      return res.status(404).json({ error: errors.noAttendanceRecordsFound });
-    }
-
-    return res.json({ attendanceRecords });
-  } catch (error) {
-    console.error("Error fetching attendance records:", error);
-    return res.status(500).json({ error: errors.getAttendanceError });
-  }
-});
 
 
 module.exports.handler = serverless(app);
