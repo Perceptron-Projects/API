@@ -53,44 +53,96 @@ app.use((req, res, next) => {
   }
 });
 
-app.get("/api/users/isWithinRadius/:companyId", rolesMiddleware(["admin","hr","employee"]), async function (req, res) {
-  try {
-    const { userLat, userLon } = req.query;
-    const companyId = req.params.companyId;
+app.get(
+  "/api/users/isWithinRadius/:companyId",
+  rolesMiddleware(["admin", "hr", "employee"]),
+  async function (req, res) {
+    try {
+      const { userLat, userLon, branchId } = req.query;
+      const companyId = req.params.companyId;
 
-    // Validate input data
-    if (!companyId || !userLat || !userLon) {
-      res.status(400).json({ error: errors.invalidInputData });
-      return;
+      // Validate input data
+      if (!companyId || !userLat || !userLon) {
+        res.status(400).json({ error: "Invalid input data" });
+        return;
+      }
+
+      console.log("checking", userLat, userLon, companyId);
+
+      // Fetch company details from the COMPANY_TABLE
+      const companyParams = {
+        TableName: COMPANY_TABLE,
+        Key: {
+          companyId: companyId ,
+        },
+      };
+
+
+      const { Item: company } = await dynamoDbClient.send(
+        new GetCommand(companyParams)
+      );
+
+      console.log("company found", company);
+
+      if (!company) {
+        res.status(404).json({ error: "Company not found" });
+        return;
+      }
+      console.log("company found");
+
+       let companyLat, companyLon, radiusFromCenter;
+
+       if(branchId){
+       const branches = company.branches;
+       let branch = null;
+
+       console.log("branches found", branches);
+
+       // Find the branch with the matching branchId
+       for (const b of branches) {
+         if (b.branchId === branchId) {
+           branch = b;
+           break;
+         }
+       }
+
+       if (branch) {
+         companyLat = parseFloat(branch.location.latitude);
+         companyLon = parseFloat(branch.location.longitude);
+         radiusFromCenter = parseFloat(branch.radiusFromCenterOfBranch);
+       } else {
+         companyLat = parseFloat(company.location.latitude);
+         companyLon = parseFloat(company.location.longitude);
+         radiusFromCenter = parseFloat(company.radiusFromCenterOfCompany);
+       }
+
+       console.log("checking 2222", companyLat, companyLon, radiusFromCenter); 
+      }
+      else{
+        companyLat = parseFloat(company.location.latitude);
+        companyLon = parseFloat(company.location.longitude);
+        radiusFromCenter = parseFloat(company.radiusFromCenterOfCompany);
+      }
+
+      // Check if the user is within the predefined radius
+      const withinRadius = isWithinRadius(
+        parseFloat(userLat),
+        parseFloat(userLon),
+        companyLat,
+        companyLon,
+        radiusFromCenter
+      );
+
+      console.log("withinRadius", withinRadius);
+
+      res.json({ withinRadius });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Error checking user within radius" });
     }
-
-    // Fetch company details from the COMPANY_TABLE
-    const companyParams = {
-      TableName: COMPANY_TABLE,
-      Key: {
-        companyId: companyId,
-      },
-    };
-
-    const { Item: company } = await dynamoDbClient.send(new GetCommand(companyParams));
-
-    if (!company) {
-      res.status(404).json({ error: errors.adminCompanyInfoNotFound });
-      return;
-    }
-
-    // Extract company details
-    const { latitude: companyLat, longitude: companyLon, radiusFromCenterOfCompany } = company;
-
-    // Check if the user is within the predefined radius
-    const withinRadius = isWithinRadius(parseFloat(userLat), parseFloat(userLon), companyLat, companyLon, radiusFromCenterOfCompany);
-
-    res.json({ withinRadius });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: errors.userWithinRadiusError });
   }
-});
+);
+
 
 app.post("/api/users/attendance/mark", rolesMiddleware(["hr","employee"]), async function (req, res) {
   try {
@@ -617,7 +669,7 @@ app.get("/api/users/admins/all", rolesMiddleware(["superadmin"]), async function
   }
 });
 
-app.get("/api/users/admins/:id", rolesMiddleware(["superadmin"]), async function (req, res) {
+app.get("/api/users/admins/:id", rolesMiddleware(["superadmin","admin"]), async function (req, res) {
   try {
     const adminId = req.params.id;
     const adminParams = {
@@ -1862,18 +1914,51 @@ app.delete("/api/users/team/:teamId", async function (req, res) {
 });
 
 
+
+
 // update team
 
 app.put("/api/users/team/:teamId", async function (req, res) {
   const teamId = req.params.teamId;
 
-  console.log("team", teamId, req.body);
   if (!teamId) {
     return res.status(400).json({ error: errors.invalidTeamId });
   }
 
   if (!req.body) {
     return res.status(400).json({ error: errors.invalidRequestBody });
+  }
+
+  // check if team already exists
+  const { Items } = await dynamoDbClient.send(
+    new ScanCommand({
+      TableName: TEAM_TABLE,
+      ProjectionExpression: "teamId",
+      FilterExpression: "teamName = :teamName",
+      ExpressionAttributeValues: {
+        ":teamName": req.body.teamName,
+      },
+    })
+  );
+  if (Items && Items.length > 0 && Items[0].teamId !== teamId) {
+    res.status(409).json({ error: errors.teamAlreadyExists });
+    return;
+  }
+
+  // check if project already exists
+  const { Items: projects } = await dynamoDbClient.send(
+    new ScanCommand({
+      TableName: TEAM_TABLE,
+      ProjectionExpression: "teamId",
+      FilterExpression: "projectName = :projectName",
+      ExpressionAttributeValues: {
+        ":projectName": req.body.projectName,
+      },
+    })
+  );
+  if (projects && projects.length > 0 && projects[0].teamId !== teamId) {
+    res.status(409).json({ error: errors.projectAlreadyExists });
+    return;
   }
 
   const base64regex =
@@ -1919,16 +2004,15 @@ app.put("/api/users/team/:teamId", async function (req, res) {
   }
 });
 
-
 // add new team
 
-app.post("/api/users/teams", rolesMiddleware(["supervisor"]),async function (req, res) {
+app.post("/api/users/teams", async function (req, res) {
   if (req.body.teamsImage) {
     try {
       const uploadResult = await uploadImage(req.body.teamsImage);
       req.body.teamsImage = uploadResult.imageUrl;
     } catch (error) {
-      console.error("Image Error:", error);
+      console.error("Error:", error);
       res.status(500).json({ error: errors.imageUploadError });
       return;
     }
@@ -1942,8 +2026,40 @@ app.post("/api/users/teams", rolesMiddleware(["supervisor"]),async function (req
     },
   };
 
+  // check if team already exists
+  const { Items } = await dynamoDbClient.send(
+    new ScanCommand({
+      TableName: TEAM_TABLE,
+      FilterExpression: "teamName = :teamName",
+      ExpressionAttributeValues: {
+        ":teamName": req.body.teamName,
+      },
+    })
+  );
+  if (Items && Items.length > 0) {
+    res.status(409).json({ error: errors.teamAlreadyExists });
+    return;
+  }
+
+  // check if project already exists
+  const { Items: projects } = await dynamoDbClient.send(
+    new ScanCommand({
+      TableName: TEAM_TABLE,
+      FilterExpression: "projectName = :projectName",
+      ExpressionAttributeValues: {
+        ":projectName": req.body.projectName,
+      },
+    })
+  );
+  if (projects && projects.length > 0) {
+    res.status(409).json({ error: errors.projectAlreadyExists });
+    return;
+  }
+
+  // add team
+
   try {
-    await dynamoDbClient.send(new PutCommand(params));
+    dynamoDbClient.send(new PutCommand(params));
     res.json({
       message: "Team added successfully",
     });
@@ -2002,16 +2118,34 @@ app.put(
   }
 );
 
+//get all teams by employeeId
 
+app.get("/api/users/teams/employee/:employeeId", async function (req, res) {
+  const employeeId = req.params.employeeId;
 
+  if (!employeeId) {
+    res.status(400).json({ error: errors.invalidEmployeeId });
+    return;
+  }
 
+  // scan employee from teamMembers array to get teamId
+  const params = {
+    TableName: TEAM_TABLE,
+  };
+  try {
+    const { Items } = await dynamoDbClient.send(new ScanCommand(params));
 
+    // filter teams by employeeId
+    const finalizedItems = Items.filter((item) =>
+      item.teamMembers.some((member) => member.id === employeeId)
+    );
 
-
-// End of Amasha's code
-
-
-
+    res.json(finalizedItems);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: errors.getTeamsError });
+  }
+});
 
 //get employees by company id
 
@@ -2347,7 +2481,6 @@ app.get(
     }
   }
 );
-
 
 
 // End of Amasha's code
