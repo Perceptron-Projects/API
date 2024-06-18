@@ -1,4 +1,4 @@
-service: AMS-Project-Backend
+service: AMS-Project
 
 plugins:
   - serverless-offline
@@ -13,7 +13,7 @@ package:
 provider:
   name: aws
   runtime: nodejs18.x
-  region: us-east-2
+  region: us-east-1
   iam:
     role:
       statements:
@@ -89,7 +89,7 @@ custom:
   companyTableName: company
   teamTableName: teams
   attendanceTableName: attendances
-  imagesBucketName: uom-fit-ams-images-bucket-dev-kj-2024-12
+  imagesBucketName: uom-fit-ams-images-bucket
   
 resources:
   Resources:
