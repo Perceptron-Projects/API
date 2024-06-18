@@ -6,7 +6,7 @@ plugins:
 provider:
   name: aws
   runtime: nodejs18.x
-  region: ap-southeast-1
+  region: us-east-1
   iam:
     role:
       statements:
