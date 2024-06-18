@@ -25,9 +25,7 @@ const messages = require('./config/messages');
 const cors = require('cors');
 
 
-
 const app = express();
-
 
 const TEAM_TABLE = process.env.TEAM_TABLE;
 const ADMINS_TABLE = process.env.ADMINS_TABLE;
