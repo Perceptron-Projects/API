@@ -1,7 +1,7 @@
 const { PutObjectCommand } = require("@aws-sdk/client-s3");
 const { v4: uuidv4 } = require("uuid");
 const { S3Client } = require("@aws-sdk/client-s3");
-// const sharp = require("sharp");
+const sharp = require("sharp");
 const s3Client = new S3Client();
 const errors = require('../config/errors');
 const { config } = require("dotenv");
@@ -18,17 +18,17 @@ async function uploadImage(imageDataUri) {
     const decodedImage = Buffer.from(base64Image, 'base64');
 
     // Compress the image using sharp
-    // const compressedImage = await sharp(decodedImage)
-    //   .resize({ width: 800 }) // Resize the image to a width of 800px (optional)
-    //   .jpeg({ quality: 80 }) // Compress the image with 80% quality
-    //   .toBuffer();
+    const compressedImage = await sharp(decodedImage)
+      .resize({ width: 800 }) // Resize the image to a width of 800px (optional)
+      .jpeg({ quality: 80 }) // Compress the image with 80% quality
+      .toBuffer();
 
     const imageId = uuidv4();
 
     const uploadParams = {
       Bucket: IMAGES_BUCKET_NAME,
       Key: `${imageId}.jpg`,
-      Body: decodedImage,
+      Body: compressedImage,
       ContentType: "image/jpg",
       ACL: "public-read",
     };
