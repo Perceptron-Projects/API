@@ -12,7 +12,7 @@ const {
 } = require("@aws-sdk/lib-dynamodb");
 const express = require("express");
 const serverless = require("serverless-http");
-const bcrypt = require("bcrypt");
+const bcrypt = require("bcryptjs");
 const { v4: uuidv4 } = require("uuid");
 const jwt = require("jsonwebtoken");
 const { authenticateToken } = require("./middlewares/authMiddleware");
@@ -832,87 +832,125 @@ app.get("/api/users/companies/all", rolesMiddleware(["superadmin"]), async funct
 });
 
 
-app.post("/api/users/create-user", rolesMiddleware(["admin", "branchadmin"]), async function (req, res) {
-    const { companyId, contactNo, dateOfBirth, designation, branchName, email, joiningDate, firstName, lastName, username, branchId } = req.body;
+app.post("/api/users/create-user", rolesMiddleware(["admin","hr","branchadmin"]), async function (req, res) {
+  const { companyId, contactNo, dateOfBirth, designation, branchName, email, joiningDate, firstName, lastName, username, branchId, role, permissions, ...otherDetails } = req.body;
 
-    // Validate input data
-    if (
-        typeof companyId !== "string" ||
-        typeof contactNo !== "string" ||
-        typeof dateOfBirth !== "string" ||
-        typeof designation !== "string" ||
-        typeof email !== "string" ||
-        typeof joiningDate !== "string" ||
-        typeof firstName !== "string" ||
-        typeof lastName !== "string" ||
-        typeof username !== "string" ||
-        typeof branchId !== "string" ||
-        typeof branchName !== "string"
-    ) {
-        res.status(400).json({ error: errors.invalidInputData });
-        return;
-    }
+  // Validate input data
+  if (
+      !companyId || !contactNo || !dateOfBirth || !designation || !email ||
+      !joiningDate || !firstName || !lastName || !username || !branchId || !branchName
+  ) {
+      res.status(400).json({ error: "Invalid input data" });
+      return;
+  }
 
-    let imageUrl = '';
+  let imageUrl = '';
 
-    if (req.body.image) {
-        try {
-            // Await the result of the uploadImage function
-            const uploadResult = await uploadImage(req.body.image);
-            imageUrl = uploadResult.imageUrl;
-        } catch (error) {
-            console.error("Error:", error);
-            res.status(500).json({ error: errors.imageUploadError });
-            return;
-        }
-    }
+  if (req.body.image) {
+      try {
+          const uploadResult = await uploadImage(req.body.image);
+          imageUrl = uploadResult.imageUrl;
+      } catch (error) {
+          console.error("Error:", error);
+          res.status(500).json({ error: "Image upload error" });
+          return;
+      }
+  }
 
-    const userId =  "EMP-" +generateUniqueUserId();
+  const userId = "EMP-" + generateUniqueUserId();
+  const temporaryPassword = generateTemporaryPassword(); // Generating a secure random password
+  const hashedPassword = bcrypt.hashSync(temporaryPassword, 10);
 
-    const password = bcrypt.hashSync("employee123", 10);
+  const params = {
+      TableName: EMPLOYEES_TABLE,
+      Item: {
+          userId: userId,
+          companyId: companyId,
+          contactNo: contactNo,
+          dateOfBirth: dateOfBirth,
+          role: role || designation || "employee",
+          email: email,
+          joiningDate: joiningDate,
+          firstName: firstName,
+          lastName: lastName,
+          username: username,
+          password: hashedPassword,
+          branchId: branchId,
+          imageUrl: imageUrl || urls.employeeDefaultImage,
+          branchName: branchName,
+          permissions: permissions || [],
+          ...otherDetails
+      },
+  };
 
-    const params = {
-        TableName: EMPLOYEES_TABLE,
-        Item: {
-            userId: userId,
-            companyId: companyId,
-            contactNo: contactNo,
-            dateOfBirth: dateOfBirth,
-            role: designation,
-            email: email,
-            joiningDate: joiningDate,
-            firstName: firstName,
-            lastName: lastName,
-            username: username,
-            password: password,
-            branchId: branchId,
-            imageUrl: imageUrl || urls.employeeDefaultImage,
-            branchName: branchName,
-        },
-    };
+  try {
+      await dynamoDbClient.send(new PutCommand(params));
+      
+      // Send Email with Temporary Password
+      await sendEmail(email, firstName, temporaryPassword);
 
-    try {
-        await dynamoDbClient.send(new PutCommand(params));
-        res.json({
-            userId,
-            companyId,
-            contactNo,
-            dateOfBirth,
-            role: designation,
-            email,
-            joiningDate,
-            firstName,
-            lastName,
-            username,
-            branchId,
-            imageUrl,
-            branchName,
-        });
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: errors.createUserError });
-    }
+      res.json({
+          message: "User created successfully",
+          user: {
+              userId,
+              companyId,
+              contactNo,
+              dateOfBirth,
+              role: role || designation || "employee",
+              email,
+              joiningDate,
+              firstName,
+              lastName,
+              username,
+              branchId,
+              imageUrl,
+              branchName,
+              permissions,
+              ...otherDetails
+          }
+      });
+  } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Failed to create user" });
+  }
 });
+
+function generateTemporaryPassword(length = 6) {
+  const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%";
+  let password = "";
+  for (let i = 0; i < length; i++) {
+      const randomIndex = Math.floor(Math.random() * charset.length);
+      password += charset[randomIndex];
+  }
+  return password;
+}
+
+async function sendEmail(email, firstName, temporaryPassword) {
+  const params = {
+      Source: 'kj.me.cd@gmail.com', // Replace with your "From" address
+      Destination: { ToAddresses: [email] },
+      Message: {
+          Subject: { Data: 'SyncIn - Your Temporary Password' },
+          Body: {
+              Text: { Data: `Hello ${firstName},\n\nYour Email : ${email}\nYour temporary password is: ${temporaryPassword}\nPlease change it upon your first login.\n\nBest regards,\nSyncIn Team` }
+          }
+      }
+  };
+
+  try {
+      const sendPromise = await ses.sendEmail(params).promise();
+      console.log(sendPromise);
+  } catch (error) {
+      console.error("Email not sent:", error);
+      throw error; 
+  }
+}
+
+function generateUniqueUserId() {
+  const uuid = uuidv4(); // Generate a UUID
+  const shortId = Buffer.from(uuid).toString('base64').replace(/=/g, '').slice(0, 5); // Convert UUID to Base64 and truncate
+  return shortId;
+}
 
 app.get("/api/users/check-email/:email/:id", rolesMiddleware(["superadmin", "admin", "branchadmin", "hr", "employee"]), async function (req, res) {
   const email = req.params.email;
@@ -2823,5 +2861,56 @@ app.post('/api/users/reset-password', async (req, res) => {
     res.status(500).json({ message: 'Error resetting password' });
   }
 });
+
+app.get("/api/users/attendance/getByDateRange", rolesMiddleware(["hr","employee"]), async function (req, res) {
+  try {
+    const { employeeId, companyId, startDate, endDate } = req.query;
+
+    console.log("Request received with parameters:", { employeeId, companyId, startDate, endDate });
+
+    // Validate input data
+    if (!employeeId || !companyId || !startDate || !endDate) {
+      console.log("Invalid input data:", { employeeId, companyId, startDate, endDate });
+      return res.status(400).json({ error: errors.invalidInputData });
+    }
+
+    const startDateISO = new Date(startDate).toISOString().split('T')[0];
+    const endDateISO = new Date(endDate).toISOString().split('T')[0];
+
+    console.log("Formatted startDate and endDate:", { startDateISO, endDateISO });
+
+    // Scan attendance records for the specified date range
+    const attendanceParams = {
+      TableName: ATTENDANCE_TABLE,
+      FilterExpression: "begins_with(#attendanceId, :employeeId) AND #date BETWEEN :startDate AND :endDate",
+      ExpressionAttributeNames: {
+        "#attendanceId": "attendanceId",
+        "#date": "date"
+      },
+      ExpressionAttributeValues: {
+        ":employeeId": employeeId,
+        ":startDate": startDateISO,
+        ":endDate": endDateISO
+      },
+    };
+
+    console.log("Scanning DynamoDB with parameters:", attendanceParams);
+
+    const { Items: attendanceRecords } = await dynamoDbClient.send(new ScanCommand(attendanceParams));
+
+    console.log("Attendance records fetched:", attendanceRecords);
+
+    if (attendanceRecords.length === 0) {
+      console.log("No attendance records found for the specified date range.");
+      return res.status(404).json({ error: errors.noAttendanceRecordsFound });
+    }
+
+    return res.json({ attendanceRecords });
+  } catch (error) {
+    console.error("Error fetching attendance records:", error);
+    return res.status(500).json({ error: errors.getAttendanceError });
+  }
+});
+
 
 module.exports.handler = serverless(app);

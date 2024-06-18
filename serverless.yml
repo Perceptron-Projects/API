@@ -6,7 +6,7 @@ plugins:
 provider:
   name: aws
   runtime: nodejs18.x
-  region: us-east-1
+  region: ap-southeast-1
   iam:
     role:
       statements:
@@ -82,7 +82,7 @@ custom:
   companyTableName: company
   teamTableName: teams
   attendanceTableName: attendances
-  imagesBucketName: uom-fit-ams-images-bucket
+  imagesBucketName: uom-fit-ams-images-bucket-dev-kj-2029
 
 resources:
   Resources:
