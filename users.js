@@ -12,7 +12,7 @@ const {
 } = require("@aws-sdk/lib-dynamodb");
 const express = require("express");
 const serverless = require("serverless-http");
-const bcrypt = require("bcryptjs");
+const bcrypt = require("bcrypt");
 const { v4: uuidv4 } = require("uuid");
 const jwt = require("jsonwebtoken");
 const { authenticateToken } = require("./middlewares/authMiddleware");
