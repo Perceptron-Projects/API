@@ -42,4 +42,8 @@ module.exports = {
   userNotFound: 'Could not find user with provided "userId"',
   userWithinRadiusError: 'Error checking if the user is within the radius',
   imageUploadError: 'Error uploading image',
+  teamAlreadyExists: 'Team Name already exists',
+  projectAlreadyExists: 'Project Name already exists',
+  getTeamsError: "Could not get teams",
+
 };
