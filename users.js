@@ -53,44 +53,96 @@ app.use((req, res, next) => {
   }
 });
 
-app.get("/api/users/isWithinRadius/:companyId", rolesMiddleware(["admin","hr","employee"]), async function (req, res) {
-  try {
-    const { userLat, userLon } = req.query;
-    const companyId = req.params.companyId;
+app.get(
+  "/api/users/isWithinRadius/:companyId",
+  rolesMiddleware(["admin", "hr", "employee"]),
+  async function (req, res) {
+    try {
+      const { userLat, userLon, branchId } = req.query;
+      const companyId = req.params.companyId;
 
-    // Validate input data
-    if (!companyId || !userLat || !userLon) {
-      res.status(400).json({ error: errors.invalidInputData });
-      return;
+      // Validate input data
+      if (!companyId || !userLat || !userLon) {
+        res.status(400).json({ error: "Invalid input data" });
+        return;
+      }
+
+      console.log("checking", userLat, userLon, companyId);
+
+      // Fetch company details from the COMPANY_TABLE
+      const companyParams = {
+        TableName: COMPANY_TABLE,
+        Key: {
+          companyId: companyId ,
+        },
+      };
+
+
+      const { Item: company } = await dynamoDbClient.send(
+        new GetCommand(companyParams)
+      );
+
+      console.log("company found", company);
+
+      if (!company) {
+        res.status(404).json({ error: "Company not found" });
+        return;
+      }
+      console.log("company found");
+
+       let companyLat, companyLon, radiusFromCenter;
+
+       if(branchId){
+       const branches = company.branches;
+       let branch = null;
+
+       console.log("branches found", branches);
+
+       // Find the branch with the matching branchId
+       for (const b of branches) {
+         if (b.branchId === branchId) {
+           branch = b;
+           break;
+         }
+       }
+
+       if (branch) {
+         companyLat = parseFloat(branch.location.latitude);
+         companyLon = parseFloat(branch.location.longitude);
+         radiusFromCenter = parseFloat(branch.radiusFromCenterOfBranch);
+       } else {
+         companyLat = parseFloat(company.location.latitude);
+         companyLon = parseFloat(company.location.longitude);
+         radiusFromCenter = parseFloat(company.radiusFromCenterOfCompany);
+       }
+
+       console.log("checking 2222", companyLat, companyLon, radiusFromCenter); 
+      }
+      else{
+        companyLat = parseFloat(company.location.latitude);
+        companyLon = parseFloat(company.location.longitude);
+        radiusFromCenter = parseFloat(company.radiusFromCenterOfCompany);
+      }
+
+      // Check if the user is within the predefined radius
+      const withinRadius = isWithinRadius(
+        parseFloat(userLat),
+        parseFloat(userLon),
+        companyLat,
+        companyLon,
+        radiusFromCenter
+      );
+
+      console.log("withinRadius", withinRadius);
+
+      res.json({ withinRadius });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Error checking user within radius" });
     }
-
-    // Fetch company details from the COMPANY_TABLE
-    const companyParams = {
-      TableName: COMPANY_TABLE,
-      Key: {
-        companyId: companyId,
-      },
-    };
-
-    const { Item: company } = await dynamoDbClient.send(new GetCommand(companyParams));
-
-    if (!company) {
-      res.status(404).json({ error: errors.adminCompanyInfoNotFound });
-      return;
-    }
-
-    // Extract company details
-    const { latitude: companyLat, longitude: companyLon, radiusFromCenterOfCompany } = company;
-
-    // Check if the user is within the predefined radius
-    const withinRadius = isWithinRadius(parseFloat(userLat), parseFloat(userLon), companyLat, companyLon, radiusFromCenterOfCompany);
-
-    res.json({ withinRadius });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: errors.userWithinRadiusError });
   }
-});
+);
+
 
 app.post("/api/users/attendance/mark", rolesMiddleware(["hr","employee"]), async function (req, res) {
   try {
