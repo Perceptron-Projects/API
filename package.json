@@ -7,7 +7,7 @@
     "@aws-sdk/client-s3": "^3.496.0",
     "@aws-sdk/lib-dynamodb": "^3.478.0",
     "@aws-sdk/lib-storage": "^3.496.0",
-    "bcryptjs": "^2.4.3",
+    "bcrypt": "^5.1.1",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
