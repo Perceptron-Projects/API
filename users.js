@@ -836,13 +836,22 @@ app.post("/api/users/create-user", rolesMiddleware(["admin","hr","branchadmin"])
   const { companyId, contactNo, dateOfBirth, designation, branchName, email, joiningDate, firstName, lastName, username, branchId, role, permissions, ...otherDetails } = req.body;
 
   // Validate input data
-  if (
-      !companyId || !contactNo || !dateOfBirth || !designation || !email ||
-      !joiningDate || !firstName || !lastName || !username || !branchId || !branchName
-  ) {
-      res.status(400).json({ error: "Invalid input data" });
-      return;
-  }
+    if (
+        typeof companyId !== "string" ||
+        typeof contactNo !== "string" ||
+        typeof dateOfBirth !== "string" ||
+        typeof designation !== "string" ||
+        typeof email !== "string" ||
+        typeof joiningDate !== "string" ||
+        typeof firstName !== "string" ||
+        typeof lastName !== "string" ||
+        typeof username !== "string" ||
+        typeof branchId !== "string" ||
+        typeof branchName !== "string"
+    ) {
+        res.status(400).json({ error: errors.invalidInputData });
+        return;
+    }
 
   let imageUrl = '';
 
