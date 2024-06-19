@@ -5,7 +5,6 @@ const sharp = require("sharp");
 const s3Client = new S3Client();
 const errors = require('../config/errors');
 const { config } = require("dotenv");
-const { decode } = require("jsonwebtoken");
 
 const IMAGES_BUCKET_NAME = process.env.IMAGES_BUCKET_NAME || config().parsed.IMAGES_BUCKET_NAME;
 
