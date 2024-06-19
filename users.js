@@ -23,7 +23,7 @@ const { uploadImage } = require("./utils/imageUpload");
 const urls = require("./config/urls");
 const messages = require('./config/messages');
 const cors = require('cors');
-
+const ses = new AWS.SES({ region: 'us-east-1' });
 
 const app = express();
 
