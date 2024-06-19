@@ -5,7 +5,10 @@ const {
   GetCommand,
   PutCommand,
   UpdateCommand,
+  DeleteCommand,
   ScanCommand,
+  BatchGetCommand,
+
 } = require("@aws-sdk/lib-dynamodb");
 const express = require("express");
 const serverless = require("serverless-http");
@@ -26,12 +29,14 @@ const cors = require('cors');
 const app = express();
 
 
+const TEAM_TABLE = process.env.TEAM_TABLE;
 const ADMINS_TABLE = process.env.ADMINS_TABLE;
 const EMPLOYEES_TABLE = process.env.EMPLOYEES_TABLE;
 const COMPANY_TABLE = process.env.COMPANY_TABLE;
 const ATTENDANCE_TABLE = process.env.ATTENDANCE_TABLE;
 const JWT_SECRET = process.env.JWT_SECRET; 
 const companyDefaultImage = urls.companyDefaultImage;
+const LEAVES_CALENDAR_TABLE = process.env.LEAVES_CALENDAR_TABLE;
 
 const client = new DynamoDBClient();
 const dynamoDbClient = DynamoDBDocumentClient.from(client);
@@ -48,44 +53,96 @@ app.use((req, res, next) => {
   }
 });
 
-app.get("/api/users/isWithinRadius/:companyId", rolesMiddleware(["admin","hr","employee"]), async function (req, res) {
-  try {
-    const { userLat, userLon } = req.query;
-    const companyId = req.params.companyId;
+app.get(
+  "/api/users/isWithinRadius/:companyId",
+  rolesMiddleware(["admin", "hr", "employee"]),
+  async function (req, res) {
+    try {
+      const { userLat, userLon, branchId } = req.query;
+      const companyId = req.params.companyId;
 
-    // Validate input data
-    if (!companyId || !userLat || !userLon) {
-      res.status(400).json({ error: errors.invalidInputData });
-      return;
+      // Validate input data
+      if (!companyId || !userLat || !userLon) {
+        res.status(400).json({ error: "Invalid input data" });
+        return;
+      }
+
+      console.log("checking", userLat, userLon, companyId);
+
+      // Fetch company details from the COMPANY_TABLE
+      const companyParams = {
+        TableName: COMPANY_TABLE,
+        Key: {
+          companyId: companyId ,
+        },
+      };
+
+
+      const { Item: company } = await dynamoDbClient.send(
+        new GetCommand(companyParams)
+      );
+
+      console.log("company found", company);
+
+      if (!company) {
+        res.status(404).json({ error: "Company not found" });
+        return;
+      }
+      console.log("company found");
+
+       let companyLat, companyLon, radiusFromCenter;
+
+       if(branchId){
+       const branches = company.branches;
+       let branch = null;
+
+       console.log("branches found", branches);
+
+       // Find the branch with the matching branchId
+       for (const b of branches) {
+         if (b.branchId === branchId) {
+           branch = b;
+           break;
+         }
+       }
+
+       if (branch) {
+         companyLat = parseFloat(branch.location.latitude);
+         companyLon = parseFloat(branch.location.longitude);
+         radiusFromCenter = parseFloat(branch.radiusFromCenterOfBranch);
+       } else {
+         companyLat = parseFloat(company.location.latitude);
+         companyLon = parseFloat(company.location.longitude);
+         radiusFromCenter = parseFloat(company.radiusFromCenterOfCompany);
+       }
+
+       console.log("checking 2222", companyLat, companyLon, radiusFromCenter); 
+      }
+      else{
+        companyLat = parseFloat(company.location.latitude);
+        companyLon = parseFloat(company.location.longitude);
+        radiusFromCenter = parseFloat(company.radiusFromCenterOfCompany);
+      }
+
+      // Check if the user is within the predefined radius
+      const withinRadius = isWithinRadius(
+        parseFloat(userLat),
+        parseFloat(userLon),
+        companyLat,
+        companyLon,
+        radiusFromCenter
+      );
+
+      console.log("withinRadius", withinRadius);
+
+      res.json({ withinRadius });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Error checking user within radius" });
     }
-
-    // Fetch company details from the COMPANY_TABLE
-    const companyParams = {
-      TableName: COMPANY_TABLE,
-      Key: {
-        companyId: companyId,
-      },
-    };
-
-    const { Item: company } = await dynamoDbClient.send(new GetCommand(companyParams));
-
-    if (!company) {
-      res.status(404).json({ error: errors.adminCompanyInfoNotFound });
-      return;
-    }
-
-    // Extract company details
-    const { latitude: companyLat, longitude: companyLon, radiusFromCenterOfCompany } = company;
-
-    // Check if the user is within the predefined radius
-    const withinRadius = isWithinRadius(parseFloat(userLat), parseFloat(userLon), companyLat, companyLon, radiusFromCenterOfCompany);
-
-    res.json({ withinRadius });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: errors.userWithinRadiusError });
   }
-});
+);
+
 
 app.post("/api/users/attendance/mark", rolesMiddleware(["hr","employee"]), async function (req, res) {
   try {
@@ -184,7 +241,7 @@ app.get("/api/users/attendance/checkForTheDay/:employeeId", rolesMiddleware(["hr
   }
 });
 
-app.get("/api/users/:userId", rolesMiddleware(["admin","branchadmin","hr","employee"]), async function (req, res) { 
+app.get("/api/users/:userId", rolesMiddleware(["admin","branchadmin","hr","employee","supervisor"]), async function (req, res) { 
   const params = {
     TableName: EMPLOYEES_TABLE,
     Key: {
@@ -612,7 +669,7 @@ app.get("/api/users/admins/all", rolesMiddleware(["superadmin"]), async function
   }
 });
 
-app.get("/api/users/admins/:id", rolesMiddleware(["superadmin"]), async function (req, res) {
+app.get("/api/users/admins/:id", rolesMiddleware(["superadmin","admin"]), async function (req, res) {
   try {
     const adminId = req.params.id;
     const adminParams = {
@@ -731,6 +788,26 @@ app.get("/api/users/company/:id", rolesMiddleware(["superadmin","admin","brancha
 }
 );
 
+app.delete("/api/users/company/:id", rolesMiddleware(["superadmin"]), async function (req, res) {
+  try {
+    const companyId = req.params.id;
+    const companyParams = {
+      TableName: COMPANY_TABLE,
+      Key: {
+        companyId: companyId,
+      },
+    };
+
+    await dynamoDbClient.send(new DeleteCommand(companyParams));
+
+    res.json({ message: "Company deleted successfully" });
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({ error: errors.deleteCompanyError });
+  }
+}
+);
+
 app.get("/api/users/companies/all", rolesMiddleware(["superadmin"]), async function (req, res) {
   
 
@@ -749,97 +826,197 @@ app.get("/api/users/companies/all", rolesMiddleware(["superadmin"]), async funct
   }
 });
 
-app.post("/api/users/create-user", rolesMiddleware(["admin","branchadmin"]), async function (req, res) {
-   const { companyId,contactNo, dateOfBirth, designation,branchName, email, joiningDate,firstName, lastName,username,branchId } = req.body;
-   
-  // Validate input data
-  if (
-    typeof companyId !== "string" ||
-    typeof contactNo !== "string" ||
-    typeof dateOfBirth !== "string" ||
-    typeof designation !== "string" ||
-    typeof email !== "string" ||
-    typeof joiningDate !== "string" ||
-    typeof firstName !== "string" ||
-    typeof lastName !== "string" ||
-    typeof username !== "string"||
-    typeof branchId !== "string"||
-    typeof branchName !== "string"
-  ) {
-    res.status(400).json({ error: errors.invalidInputData });
-    return;
-  }
 
-  let imageUrl = '';
+app.post("/api/users/create-user", rolesMiddleware(["admin", "branchadmin"]), async function (req, res) {
+    const { companyId, contactNo, dateOfBirth, designation, branchName, email, joiningDate, firstName, lastName, username, branchId } = req.body;
 
-  if (req.body.image) {
-    try {
-      // Await the result of the uploadImage function
-      const uploadResult = await uploadImage(req.body.image);
-      imageUrl = uploadResult.imageUrl;
-    } catch (error) {
-      console.error("Error:", error);
-      res.status(500).json({ error: errors.imageUploadError });
-      return;
+    // Validate input data
+    if (
+        typeof companyId !== "string" ||
+        typeof contactNo !== "string" ||
+        typeof dateOfBirth !== "string" ||
+        typeof designation !== "string" ||
+        typeof email !== "string" ||
+        typeof joiningDate !== "string" ||
+        typeof firstName !== "string" ||
+        typeof lastName !== "string" ||
+        typeof username !== "string" ||
+        typeof branchId !== "string" ||
+        typeof branchName !== "string"
+    ) {
+        res.status(400).json({ error: errors.invalidInputData });
+        return;
     }
+
+    let imageUrl = '';
+
+    if (req.body.image) {
+        try {
+            // Await the result of the uploadImage function
+            const uploadResult = await uploadImage(req.body.image);
+            imageUrl = uploadResult.imageUrl;
+        } catch (error) {
+            console.error("Error:", error);
+            res.status(500).json({ error: errors.imageUploadError });
+            return;
+        }
+    }
+
+    const userId =  "EMP-" +generateUniqueUserId();
+
+    const password = bcrypt.hashSync("employee123", 10);
+
+    const params = {
+        TableName: EMPLOYEES_TABLE,
+        Item: {
+            userId: userId,
+            companyId: companyId,
+            contactNo: contactNo,
+            dateOfBirth: dateOfBirth,
+            role: designation,
+            email: email,
+            joiningDate: joiningDate,
+            firstName: firstName,
+            lastName: lastName,
+            username: username,
+            password: password,
+            branchId: branchId,
+            imageUrl: imageUrl || urls.employeeDefaultImage,
+            branchName: branchName,
+        },
+    };
+
+    try {
+        await dynamoDbClient.send(new PutCommand(params));
+        res.json({
+            userId,
+            companyId,
+            contactNo,
+            dateOfBirth,
+            role: designation,
+            email,
+            joiningDate,
+            firstName,
+            lastName,
+            username,
+            branchId,
+            imageUrl,
+            branchName,
+        });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: errors.createUserError });
+    }
+});
+
+app.get("/api/users/check-email/:email/:id", rolesMiddleware(["superadmin", "admin", "branchadmin", "hr", "employee"]), async function (req, res) {
+  const email = req.params.email;
+  const id = req.params.id;
+
+  if (typeof email !== "string") {
+      res.status(400).json({ error: errors.invalidInputData });
+      return;
   }
 
-  const userId = uuidv4();
+  const empParams = {
+      TableName: EMPLOYEES_TABLE,
+      FilterExpression: "#email = :email",
+      ExpressionAttributeNames: {
+          "#email": "email",
+      },
+      ExpressionAttributeValues: {
+          ":email": email,
+      },
+  };
 
-  const password = bcrypt.hashSync("employee123", 10);
+  const adminParams = {
+      TableName: ADMINS_TABLE,
+      FilterExpression: "#email = :email",
+      ExpressionAttributeNames: {
+          "#email": "email",
+      },
+      ExpressionAttributeValues: {
+          ":email": email,
+      },
+  };
 
-  const params = {
-    TableName: EMPLOYEES_TABLE,
-    Item: {
-      userId: userId,
-      companyId: companyId,
-      contactNo: contactNo,
-      dateOfBirth: dateOfBirth,
-      role: designation,
-      email: email,
-      joiningDate: joiningDate,
-      firstName: firstName,
-      lastName: lastName,
-      username: username,
-      password: password,
-      branchId: branchId,
-      imageUrl: imageUrl || urls.employeeDefaultImage,
-      branchName: branchName,
-    },
+  const companyParams = {
+      TableName: COMPANY_TABLE,
+      FilterExpression: "#companyEmail = :companyEmail",
+      ExpressionAttributeNames: {
+          "#companyEmail": "companyEmail",
+      },
+      ExpressionAttributeValues: {
+          ":companyEmail": email,
+      },
   };
 
   try {
-    await dynamoDbClient.send(new PutCommand(params));
-    res.json({
-      userId,
-      companyId,
-      contactNo,
-      dateOfBirth,
-      role: designation,
-      email,
-      joiningDate,
-      firstName,
-      lastName,
-      username,
-      branchId,
-      imageUrl,
-      branchName,
-    });
-  }
-  catch (error) {
-    console.error(error);
-    res.status(500).json({ error: errors.createUserError });
+      const { Items: users } = await dynamoDbClient.send(new ScanCommand(empParams));
+      const { Items: admins } = await dynamoDbClient.send(new ScanCommand(adminParams));
+      const { Items: companies } = await dynamoDbClient.send(new ScanCommand(companyParams));
+if(users.length > 0){
+  if (users.length === 1 && users[0].userId === id) {
+    res.json({ emailExists: false });
+  } else {
+    res.json({ emailExists: true });
   }
 
+}
+else if(admins.length > 0){
+  if (admins.length === 1 && admins[0].userId === id) {
+    res.json({ emailExists: false });
+  } else {
+    res.json({ emailExists: true });
+  }
 
+  }
+  else if(companies.length > 0){
+    if (companies.length === 1 && companies[0].companyId === id) {
+      res.json({ emailExists: false });
+    } else {
+      res.json({ emailExists: true });
+    }
 
-
-
+  }
+  else{
+    res.json({ emailExists: false });
+  }
+  }
+   catch (error) {
+      console.error("Error checking email existence:", error);
+      res.status(500).json({ error: errors.emailCheckError });
+  }
 });
 
-app.post("/api/users/company/create", rolesMiddleware(["superadmin"]), async function (req, res) {
-  const { companyName, email, contactNo, longitude, latitude, radiusFromCenterOfCompany } = req.body;
 
+
+app.delete("/api/users/:id", rolesMiddleware(["admin","branchadmin"]), async function (req, res) {
+  
+  console.log(req.params.id,"req.params.id");
+  try {
+    const userId = req.params.id;
+    const params = {
+      TableName: EMPLOYEES_TABLE,
+      Key: {
+        userId: userId,
+      },
+    };
+    console.log(params,"params",userId);
+
+    await dynamoDbClient.send(new DeleteCommand(params));
+console.log(params);
+    res.json({ message: "User deleted successfully" });
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({ error: errors.deleteUserError });
+  }
+}
+);
+
+app.post("/api/users/company/create", rolesMiddleware(["superadmin"]), async function (req, res) {
+  const { companyName, email, contactNo, location, radiusFromCenterOfCompany } = req.body;
+const { longitude, latitude } = location;
   if (
     typeof companyName !== "string" ||
     typeof email !== "string" ||
@@ -866,7 +1043,7 @@ app.post("/api/users/company/create", rolesMiddleware(["superadmin"]), async fun
     }
   }
   
-  const companyId = uuidv4(); // Generate a unique companyId
+  const companyId = "COMP-" +generateUniqueUserId();
   
   const params = {
     TableName: COMPANY_TABLE,
@@ -905,9 +1082,11 @@ app.post("/api/users/company/create", rolesMiddleware(["superadmin"]), async fun
   
 });
 
+
+
 app.post("/api/users/company/create-branch", rolesMiddleware(["admin"]), async function (req, res) {
-  const { branchName, companyId, contactNo, email, latitude, longitude, radiusFromCenterOfBranch } = req.body;
-console.log(req.body);
+  const { branchName, companyId, contactNo, email, location, radiusFromCenterOfBranch } = req.body;
+const { longitude, latitude } = location;
   if (
     typeof branchName !== "string" ||
     typeof companyId !== "string" ||
@@ -935,7 +1114,7 @@ console.log(req.body);
     }
   }
 
-  const branchId = uuidv4(); // Generate a unique branchId
+  const branchId = "COMP_B-" +generateUniqueUserId();
 
   const params = {
     TableName: COMPANY_TABLE,
@@ -989,6 +1168,50 @@ console.log(req.body);
   }
 
 });
+
+app.delete("/api/users/company/branch/:companyId/:branchId", rolesMiddleware(["admin"]), async function (req, res) {
+  try {
+    const branchId = req.params.branchId;
+    const companyId = req.params.companyId;
+
+    const params = {
+      TableName: COMPANY_TABLE,
+      Key: {
+        companyId: companyId,
+      },
+    };
+    
+    const { Item: company } = await dynamoDbClient.send(new GetCommand(params));
+
+    if (!company) {
+      res.status(404).json({ error: errors.companyNotFound });
+      return;
+    }
+
+    const branches = company.branches || [];
+    const updatedBranches = branches.filter((branch) => branch.branchId !== branchId);
+
+    const updateParams = {
+      TableName: COMPANY_TABLE,
+      Key: {
+        companyId: companyId,
+      },
+      UpdateExpression: "SET branches = :branches",
+      ExpressionAttributeValues: {
+        ":branches": updatedBranches,
+      },
+      ReturnValues: "ALL_NEW",
+    };
+
+    const { Attributes: updatedAttributes } = await dynamoDbClient.send(new UpdateCommand(updateParams));
+
+    res.json(updatedAttributes);
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({ error: errors.deleteUserError });
+  }
+});
+
 
 app.get("/api/users/branch/:id", rolesMiddleware(["admin",]), async function (req, res) {
   try {
@@ -1051,7 +1274,7 @@ app.post("/api/users/create-branch-admin", rolesMiddleware(["admin"]), async fun
     }
   }
 
-  const userId = uuidv4();
+  const userId = "B_ADMIN-" +generateUniqueUserId();
 
   const password = bcrypt.hashSync("admin123", 10);
 
@@ -1120,6 +1343,26 @@ app.post("/api/users/create-branch-admin", rolesMiddleware(["admin"]), async fun
 
 });
 
+app.delete("/api/users/branch-admin/:id", rolesMiddleware(["admin"]), async function (req, res) {
+  try {
+    const branchAdminId = req.params.id;
+    const params = {
+      TableName: ADMINS_TABLE,
+      Key: {
+        userId: branchAdminId,
+      },
+    };
+
+    await dynamoDbClient.send(new DeleteCommand(params));
+
+    res.json({ message: "Branch admin deleted successfully" });
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({ error: errors.deleteUserError });
+  }
+}
+);
+
 app.get("/api/users/company/branch-admins/:companyId", rolesMiddleware(["admin"]), async function (req, res) {
 
   try {
@@ -1178,8 +1421,8 @@ app.get("/api/users/company/branches/:companyId", rolesMiddleware(["superadmin",
 app.patch("/api/users/company/branch/:branchId", rolesMiddleware(["superadmin","admin"]), async function (req, res) {
   try {
     const branchId = req.params.branchId;
-    const { branchName, contactNo, email, latitude, longitude, radiusFromCenterOfBranch } = req.body;
-
+    const { branchName, contactNo, email, location, radiusFromCenterOfBranch } = req.body;
+const { longitude, latitude } = location;
     // Validate input data
     if (
       typeof branchName !== "string" ||
@@ -1312,7 +1555,7 @@ app.post("/api/users/create-admin", rolesMiddleware(["superadmin"]), async funct
     return;
   }
 
-  const userId = uuidv4();
+  const userId = "COMP_ADMIN-" +generateUniqueUserId();
 
   const password = bcrypt.hashSync("admin123", 10);
 
@@ -1351,6 +1594,26 @@ app.post("/api/users/create-admin", rolesMiddleware(["superadmin"]), async funct
     res.status(500).json({ error: errors.createUserError });
   }
 });
+
+app.delete("/api/users/admin/:id", rolesMiddleware(["superadmin"]), async function (req, res) {
+  try {
+    const adminId = req.params.id;
+    const params = {
+      TableName: ADMINS_TABLE,
+      Key: {
+        userId: adminId,
+      },
+    };
+
+    await dynamoDbClient.send(new DeleteCommand(params));
+
+    res.json({ message: "Admin deleted successfully" });
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({ error: errors.deleteUserError });
+  }
+}
+);
 
 app.patch("/api/users/admins/:id", rolesMiddleware(["superadmin"]), async function (req, res) {
   try {
@@ -1443,13 +1706,14 @@ app.patch("/api/users/admins/:id", rolesMiddleware(["superadmin"]), async functi
 app.patch("/api/users/company/:id", rolesMiddleware(["superadmin"]), async function (req, res) {
   try {
     const companyId = req.params.id;
-    const { companyName, latitude, email, contactNo, longitude, radiusFromCenterOfCompany } = req.body;
+    const { companyName, location, email: companyEmail, contactNo, radiusFromCenterOfCompany } = req.body;
+    const { latitude, longitude } = location;
 
     // Validate input data
     if (
       typeof companyName !== "string" ||
       typeof latitude !== "string" ||
-      typeof email !== "string" ||
+      typeof companyEmail !== "string" ||
       typeof contactNo !== "string" ||
       typeof longitude !== "string" ||
       typeof radiusFromCenterOfCompany !== "string"
@@ -1489,26 +1753,34 @@ app.patch("/api/users/company/:id", rolesMiddleware(["superadmin"]), async funct
     const updatedCompany = {
       ...existingCompany,
       companyName: companyName || existingCompany.companyName,
-      latitude: latitude || existingCompany.latitude,
-      email: email || existingCompany.email,
+      companyEmail: companyEmail || existingCompany.companyEmail,
       contactNo: contactNo || existingCompany.contactNo,
-      longitude: longitude || existingCompany.longitude,
+      location: {
+        latitude: latitude || existingCompany.latitude,
+        longitude: longitude || existingCompany.longitude,
+      },
       radiusFromCenterOfCompany: radiusFromCenterOfCompany || existingCompany.radiusFromCenterOfCompany,
       companyImageUrl: imageUrl || existingCompany.companyImageUrl || companyDefaultImage,
     };
+    console.log(updatedCompany);
 
     const updateParams = {
       TableName: COMPANY_TABLE,
       Key: {
         companyId: companyId,
       },
-      UpdateExpression: "SET companyName = :companyName, latitude = :latitude, email = :email, contactNo = :contactNo, longitude = :longitude, radiusFromCenterOfCompany = :radiusFromCenterOfCompany, companyImageUrl = :companyImageUrl",
+      UpdateExpression: "SET companyName = :companyName, #loc.#lat = :latitude, companyEmail = :companyEmail, contactNo = :contactNo, #loc.#long = :longitude, radiusFromCenterOfCompany = :radiusFromCenterOfCompany, companyImageUrl = :companyImageUrl",
+      ExpressionAttributeNames: {
+        "#loc": "location",
+        "#lat": "latitude",
+        "#long": "longitude",
+      },
       ExpressionAttributeValues: {
         ":companyName": updatedCompany.companyName,
-        ":latitude": updatedCompany.latitude,
-        ":email": updatedCompany.email,
+        ":latitude": updatedCompany.location.latitude,
+        ":companyEmail": updatedCompany.companyEmail,
         ":contactNo": updatedCompany.contactNo,
-        ":longitude": updatedCompany.longitude,
+        ":longitude": updatedCompany.location.longitude,
         ":radiusFromCenterOfCompany": updatedCompany.radiusFromCenterOfCompany,
         ":companyImageUrl": updatedCompany.companyImageUrl,
       },
@@ -1516,7 +1788,6 @@ app.patch("/api/users/company/:id", rolesMiddleware(["superadmin"]), async funct
     };
 
     const { Attributes: updatedAttributes } = await dynamoDbClient.send(new UpdateCommand(updateParams));
-
     res.json(updatedAttributes);
   } catch (error) {
     console.error(error);
@@ -1578,5 +1849,838 @@ app.post("/api/users/login", async function (req, res) {
     return res.status(500).json({ error: errors.getUsersError });
   }
 });
+
+
+// Amasha's code
+
+//get all teams 
+
+app.get("/api/users/teams/all", async function (req, res) {
+  const params = {
+    TableName: TEAM_TABLE,
+  };
+  try {
+    const { Items } = await dynamoDbClient.send(new ScanCommand(params));
+    res.json(Items);
+    console.log(Items);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: errors.getUsersError });
+  }
+});
+
+// get single team
+
+app.get("/api/users/team/:teamId", async function (req, res) {
+  const teamId = req.params.teamId;
+  const params = {
+    TableName: TEAM_TABLE,
+    Key: {
+      teamId: teamId,
+    },
+  };
+  try {
+    const { Item } = await dynamoDbClient.send(new GetCommand(params));
+    if (Item) {
+      res.json(Item);
+    } else {
+      res.status(404).json({ error: errors.teamNotFound });
+    }
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: errors.getUsersError });
+  }
+});
+
+
+// delete team
+
+app.delete("/api/users/team/:teamId", async function (req, res) {
+  const teamId = req.params.teamId;
+  console.log("team", teamId);
+  const params = {
+    TableName: TEAM_TABLE,
+    Key: {
+      teamId: teamId,
+    },
+  };
+  try {
+    await dynamoDbClient.send(new DeleteCommand(params));
+    res.json({ message: "Team deleted successfully" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json(error);
+  }
+});
+
+
+
+
+// update team
+
+app.put("/api/users/team/:teamId", async function (req, res) {
+  const teamId = req.params.teamId;
+
+  if (!teamId) {
+    return res.status(400).json({ error: errors.invalidTeamId });
+  }
+
+  if (!req.body) {
+    return res.status(400).json({ error: errors.invalidRequestBody });
+  }
+
+  // check if team already exists
+  const { Items } = await dynamoDbClient.send(
+    new ScanCommand({
+      TableName: TEAM_TABLE,
+      ProjectionExpression: "teamId",
+      FilterExpression: "teamName = :teamName",
+      ExpressionAttributeValues: {
+        ":teamName": req.body.teamName,
+      },
+    })
+  );
+  if (Items && Items.length > 0 && Items[0].teamId !== teamId) {
+    res.status(409).json({ error: errors.teamAlreadyExists });
+    return;
+  }
+
+  // check if project already exists
+  const { Items: projects } = await dynamoDbClient.send(
+    new ScanCommand({
+      TableName: TEAM_TABLE,
+      ProjectionExpression: "teamId",
+      FilterExpression: "projectName = :projectName",
+      ExpressionAttributeValues: {
+        ":projectName": req.body.projectName,
+      },
+    })
+  );
+  if (projects && projects.length > 0 && projects[0].teamId !== teamId) {
+    res.status(409).json({ error: errors.projectAlreadyExists });
+    return;
+  }
+
+  const base64regex =
+    /^([0-9a-zA-Z+/]{4})*(([0-9a-zA-Z+/]{2}==)|([0-9a-zA-Z+/]{3}=))?$/;
+
+  if (base64regex.test(req.body.teamsImage)) {
+    try {
+      const uploadResult = await uploadImage(req.body.teamsImage);
+      req.body.teamsImage = uploadResult.imageUrl;
+      console.log(uploadResult);
+    } catch (error) {
+      console.error("Error:", error);
+      res.status(500).json({ error: errors.imageUploadError });
+      return;
+    }
+  }
+
+  const params = {
+    TableName: TEAM_TABLE,
+    Key: {
+      teamId: teamId,
+    },
+    UpdateExpression:
+      "SET teamName = :teamName, teamMembers = :teamMembers ,projectName = :projectName, supervisor = :supervisor, startDate = :startDate, teamsImage = :teamsImage",
+    ExpressionAttributeValues: {
+      ":teamName": req.body.teamName,
+      ":projectName": req.body.projectName,
+      ":supervisor": req.body.supervisor,
+      ":startDate": req.body.startDate,
+      ":teamsImage": req.body.teamsImage,
+      ":teamMembers": req.body.teamMembers,
+    },
+
+    ConditionExpression: "attribute_exists(teamId)",
+    ReturnValues: "ALL_NEW",
+  };
+  try {
+    await dynamoDbClient.send(new UpdateCommand(params));
+    res.json({ message: "Team updated successfully" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ messages: "Failed to update team" });
+  }
+});
+
+// add new team
+
+app.post("/api/users/teams", async function (req, res) {
+  if (req.body.teamsImage) {
+    try {
+      const uploadResult = await uploadImage(req.body.teamsImage);
+      req.body.teamsImage = uploadResult.imageUrl;
+    } catch (error) {
+      console.error("Error:", error);
+      res.status(500).json({ error: errors.imageUploadError });
+      return;
+    }
+  }
+
+  const params = {
+    TableName: TEAM_TABLE,
+    Item: {
+      teamId: uuidv4(),
+      ...req.body,
+    },
+  };
+
+  // check if team already exists
+  const { Items } = await dynamoDbClient.send(
+    new ScanCommand({
+      TableName: TEAM_TABLE,
+      FilterExpression: "teamName = :teamName",
+      ExpressionAttributeValues: {
+        ":teamName": req.body.teamName,
+      },
+    })
+  );
+  if (Items && Items.length > 0) {
+    res.status(409).json({ error: errors.teamAlreadyExists });
+    return;
+  }
+
+  // check if project already exists
+  const { Items: projects } = await dynamoDbClient.send(
+    new ScanCommand({
+      TableName: TEAM_TABLE,
+      FilterExpression: "projectName = :projectName",
+      ExpressionAttributeValues: {
+        ":projectName": req.body.projectName,
+      },
+    })
+  );
+  if (projects && projects.length > 0) {
+    res.status(409).json({ error: errors.projectAlreadyExists });
+    return;
+  }
+
+  // add team
+
+  try {
+    dynamoDbClient.send(new PutCommand(params));
+    res.json({
+      message: "Team added successfully",
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: errors.createUserError });
+  }
+});
+
+// check in from office
+app.post("/api/users/employees/attendance/checkin", async function (req, res) {
+  const params = {
+    TableName: ATTENDANCE_TABLE,
+    Item: {
+      attendanceId: uuidv4(),
+      reqTime: new Date().toUTCString(),
+      ...req.body,
+    },
+  };
+  try {
+    await dynamoDbClient.send(new PutCommand(params));
+    res.json({
+      message: "Attendance added successfully",
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: errors.createUserError });
+  }
+});
+
+app.put(
+  "/api/users/employees/attendance/checkin/:attendanceId",
+  async function (req, res) {
+    const attendanceId = req.params.attendanceId;
+    console.log("attendanceId", attendanceId);
+    const params = {
+      TableName: ATTENDANCE_TABLE,
+      Key: {
+        attendanceId: attendanceId,
+        reqTime: req.body.reqTime,
+      },
+      UpdateExpression: "SET checkIn = :checkIn",
+      ExpressionAttributeValues: {
+        ":checkIn": req.body.checkIn,
+      },
+      ConditionExpression: "attribute_exists(attendanceId)",
+      ReturnValues: "ALL_NEW",
+    };
+    try {
+      await dynamoDbClient.send(new UpdateCommand(params));
+      res.json({ message: "Attendance updated successfully" });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ messages: "Failed to update attendance" });
+    }
+  }
+);
+
+//get all teams by employeeId
+
+app.get("/api/users/teams/employee/:employeeId", async function (req, res) {
+  const employeeId = req.params.employeeId;
+
+  if (!employeeId) {
+    res.status(400).json({ error: errors.invalidEmployeeId });
+    return;
+  }
+
+  // scan employee from teamMembers array to get teamId
+  const params = {
+    TableName: TEAM_TABLE,
+  };
+  try {
+    const { Items } = await dynamoDbClient.send(new ScanCommand(params));
+
+    // filter teams by employeeId
+    const finalizedItems = Items.filter((item) =>
+      item.teamMembers.some((member) => member.id === employeeId)
+    );
+
+    res.json(finalizedItems);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: errors.getTeamsError });
+  }
+});
+
+//get employees by company id
+
+app.get("/api/users/company/employees/:companyId", async function (req, res) {
+  console.log("api called");
+
+  const companyId = req.params.companyId;
+  console.log("companyId:", companyId);
+
+  const params = {
+    TableName: EMPLOYEES_TABLE,
+    FilterExpression: "#companyId = :companyId AND #role = :role",
+    ExpressionAttributeNames: {
+      "#companyId": "companyId",
+      "#role": "role",
+    },
+    ExpressionAttributeValues: {
+      ":companyId": companyId,
+      ":role": "employee",
+    },
+  };
+
+  const { Items: employees } = await dynamoDbClient.send(
+    new ScanCommand(params)
+  );
+  res.json(employees);
+});
+
+
+// check in from office
+app.post("/api/users/employees/attendance/checkin", async function (req, res) {
+  const params = {
+    TableName: ATTENDANCE_TABLE,
+    Item: {
+      attendanceId: uuidv4(),
+      reqTime: new Date().toUTCString(),
+      ...req.body,
+    },
+  };
+  try {
+    await dynamoDbClient.send(new PutCommand(params));
+    res.json({
+      message: "Attendance added successfully",
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: errors.createUserError });
+  }
+});
+
+app.put(
+  "/api/users/employees/attendance/checkin/:attendanceId",
+  async function (req, res) {
+    const attendanceId = req.params.attendanceId;
+    console.log("attendanceId", attendanceId);
+    const params = {
+      TableName: ATTENDANCE_TABLE,
+      Key: {
+        attendanceId: attendanceId,
+        reqTime: req.body.reqTime,
+      },
+      UpdateExpression: "SET checkIn = :checkIn",
+      ExpressionAttributeValues: {
+        ":checkIn": req.body.checkIn,
+      },
+      ConditionExpression: "attribute_exists(attendanceId)",
+      ReturnValues: "ALL_NEW",
+    };
+    try {
+      await dynamoDbClient.send(new UpdateCommand(params));
+      res.json({ message: "Attendance updated successfully" });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ messages: "Failed to update attendance" });
+    }
+  }
+);
+
+// mark check out from office
+
+// check out
+
+app.put(
+  "/api/users/employees/attendance/checkout/:attendanceId",
+  async function (req, res) {
+    const attendanceId = req.params.attendanceId;
+    console.log("attendanceId", attendanceId);
+    const params = {
+      TableName: ATTENDANCE_TABLE,
+      Key: {
+        attendanceId: attendanceId,
+        reqTime: req.body.reqTime,
+      },
+      UpdateExpression: "SET checkOut = :checkOut",
+      ExpressionAttributeValues: {
+        ":checkOut": new Date(req.body.checkOut).toISOString(),
+      },
+      ConditionExpression: "attribute_exists(attendanceId)",
+      ReturnValues: "ALL_NEW",
+    };
+    try {
+      await dynamoDbClient.send(new UpdateCommand(params));
+      res.json({ message: "Attendance updated successfully" });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ messages: "Failed to update attendance" });
+    }
+  }
+);
+
+
+// new whf request
+
+app.post("/api/users/employees/attendance/request", async function (req, res) {
+  const params = {
+    TableName: ATTENDANCE_TABLE,
+    Item: {
+      attendanceId: uuidv4(),
+      reqTime: new Date().toISOString(),
+      whf: "pending",
+      ...req.body,
+    },
+  };
+
+  try {
+    await dynamoDbClient.send(new PutCommand(params));
+    res.json({
+      message: "Attendance added successfully",
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: errors.createUserError });
+  }
+});
+
+// get all whf requests by companyId
+
+app.get("/api/users/attendance/request/:companyId", async function (req, res) {
+  const companyId = req.params.companyId;
+
+  const params = {
+    TableName: ATTENDANCE_TABLE,
+    FilterExpression: "#companyId = :companyId AND #whf = :whf",
+    ExpressionAttributeNames: {
+      "#companyId": "companyId",
+      "#whf": "whf",
+    },
+    ExpressionAttributeValues: {
+      ":companyId": companyId,
+      ":whf": "pending",
+    },
+  };
+  const { Items: attendance } = await dynamoDbClient.send(
+    new ScanCommand(params)
+  );
+  const employees = attendance.map((attendance) => attendance.employeeId);
+  const uniqueEmployees = [...new Set(employees)];
+
+//get unique employees data from uniqueEmployees array and add to employeesData array
+
+  const getEmployeeData = async (employeeId) => {
+    return new Promise((resolve, reject) => {
+      const params = {
+        TableName: EMPLOYEES_TABLE,
+        Key: {
+          userId: employeeId,
+        },
+      };
+      dynamoDbClient.send(new GetCommand(params), (err, data) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(data.Item);
+        }
+      });
+    });
+  };
+
+  const employeeData = [];
+  for (const employeeId of uniqueEmployees) {
+    const employee = await getEmployeeData(employeeId);
+    employeeData.push(employee);
+  }
+
+
+  
+  // join employee data with attendance data
+
+  const finalData = attendance.map((attendance) => {
+    const employee = employeeData.find(
+      (employee) => employee.userId === attendance.employeeId
+    );
+    return {
+      ...attendance,
+      firstName: employee.firstName,
+      lastName: employee.lastName,
+      email: employee.email,
+      imageUrl: employee.imageUrl,
+    };
+  });
+
+  res.json(finalData);
+});
+
+// Update Employee Attendance Record
+app.put(
+  "/api/users/employees/attendance/:attendanceId",
+  async function (req, res) {
+    const attendanceId = req.params.attendanceId;
+    console.log("attendanceId", attendanceId);
+
+    const params = {
+      TableName: ATTENDANCE_TABLE,
+      Key: {
+        attendanceId: attendanceId,
+        reqTime: req.body.reqTime,
+      },
+      UpdateExpression: "SET whf = :whf",
+
+      ExpressionAttributeValues: {
+        ":whf": req.body.whf,
+      },
+      ReturnValues: "ALL_NEW",
+    };
+
+    try {
+      const response = await dynamoDbClient.send(new UpdateCommand(params));
+      res.json(response);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: errors.createUserError });
+    }
+  }
+);
+
+
+// get latest whf request
+app.get(
+  "/api/users/employees/attendance/:employeeId",
+  async function (req, res) {
+    const employeeId = req.params.employeeId;
+    console.log("employeeId:", employeeId);
+
+    const params = {
+      TableName: ATTENDANCE_TABLE,
+
+      FilterExpression: "#employeeId = :employeeId",
+
+      ExpressionAttributeNames: {
+        "#employeeId": "employeeId",
+      },
+
+      ExpressionAttributeValues: {
+        ":employeeId": employeeId,
+      },
+
+      ScanIndexForward: false,
+    };
+    const { Items: attendance } = await dynamoDbClient.send(
+      new ScanCommand(params)
+    );
+    const latestAttendance = attendance.sort((a, b) => {
+      const dateA = new Date(a.reqTime);
+      const dateB = new Date(b.reqTime);
+      return dateB - dateA;
+    });
+    res.json(latestAttendance[0]);
+  }
+);
+
+// get attendance by employee id by between start date and end date and current year
+app.get(
+  "/api/users/employees/attendance/:employeeId/:startDate/:endDate",
+  async function (req, res) {
+    const employeeId = req.params.employeeId;
+    const startDate = req.params.startDate;
+    const endDate = req.params.endDate;
+
+    const params = {
+      TableName: ATTENDANCE_TABLE,
+      FilterExpression:
+        "#employeeId = :employeeId AND #checkIn BETWEEN :startDate AND :endDate",
+      ExpressionAttributeNames: {
+        "#employeeId": "employeeId",
+        "#checkIn": "checkIn",
+      },
+      ExpressionAttributeValues: {
+        ":employeeId": employeeId,
+        ":startDate": startDate,
+        ":endDate": endDate,
+      },
+    };
+    try {
+      const { Items: attendance } = await dynamoDbClient.send(
+        new ScanCommand(params)
+      );
+
+      // calculate mon, tue, wed, thu, fri hours by checkIn and checkOut
+      const workedHours = {
+        mon: 0,
+        tue: 0,
+        wed: 0,
+        thu: 0,
+        fri: 0,
+      };
+      attendance.forEach((attendance) => {
+        // if check attendance have checkIn and checkOut
+        if (attendance.checkIn && attendance.checkOut) {
+          const checkIn = new Date(attendance.checkIn);
+          const checkOut = new Date(attendance.checkOut);
+          const diffTime = Math.abs(checkOut - checkIn);
+          const diffHours = diffTime / (1000 * 60 * 60);
+          if (checkIn.getDay() === 1) {
+            workedHours.mon += Math.round(diffHours * 100) / 100;
+          } else if (checkIn.getDay() === 2) {
+            workedHours.tue += Math.round(diffHours * 100) / 100;
+          } else if (checkIn.getDay() === 3) {
+            workedHours.wed += Math.round(diffHours * 100) / 100;
+          } else if (checkIn.getDay() === 4) {
+            workedHours.thu += Math.round(diffHours * 100) / 100;
+          } else if (checkIn.getDay() === 5) {
+            workedHours.fri += Math.round(diffHours * 100) / 100;
+          }
+        }
+      });
+
+      res.json({
+        ...workedHours,
+        details: attendance,
+      });
+    } catch (error) {
+      res.status(500).json({ error });
+    }
+  }
+);
+
+
+// End of Amasha's code
+
+
+
+function generateUniqueUserId() {
+  const uuid = uuidv4(); // Generate a UUID
+  const shortId = Buffer.from(uuid).toString('base64').replace(/=/g, '').slice(0, 5); // Convert UUID to Base64 and truncate
+  return shortId;
+}
+
+
+// leave request api
+
+// new leave request
+app.post("/api/users/employees/leave/request", async function (req, res) {
+  // console.log("req.body", req.body);
+  const params = {
+    TableName: LEAVES_CALENDAR_TABLE,
+    Item: {
+      leaveId: uuidv4(),
+      createdAt: new Date().toUTCString(),
+      status: "pending",
+      ...req.body,
+    },
+  };
+  try {
+    await dynamoDbClient.send(new PutCommand(params));
+    res.json({
+      message: "Leave added successfully",
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: errors.createUserError });
+  }
+});
+
+// get all pending leaves request by company id
+app.get(
+  "/api/users/employees/leave/request/pending/:companyId",
+  async function (req, res) {
+    const companyId = req.params.companyId;
+    console.log("companyId", companyId);
+    const params = {
+      TableName: LEAVES_CALENDAR_TABLE,
+      FilterExpression: "#companyId = :companyId AND #status = :status",
+      ExpressionAttributeNames: {
+        "#companyId": "companyId",
+        "#status": "status",
+      },
+      ExpressionAttributeValues: {
+        ":companyId": companyId,
+
+        ":status": "pending",
+      },
+    };
+    const { Items: leaves } = await dynamoDbClient.send(
+      new ScanCommand(params)
+    );
+
+    const getEmployeeData = async (employeeId) => {
+      return new Promise((resolve, reject) => {
+        const params = {
+          TableName: EMPLOYEES_TABLE,
+          Key: {
+            userId: employeeId,
+          },
+        };
+        dynamoDbClient.send(new GetCommand(params), (err, data) => {
+          if (err) {
+            reject(err);
+          } else {
+            resolve(data.Item);
+          }
+        });
+      });
+    };
+
+    const employees = leaves.map((leave) => leave.employeeId);
+    const uniqueEmployees = [...new Set(employees)];
+    const employeeData = [];
+    for (const employeeId of uniqueEmployees) {
+      const employee = await getEmployeeData(employeeId);
+      employeeData.push(employee);
+    }
+    const finalData = leaves.map((leave) => {
+      const employee = employeeData.find(
+        (employee) => employee.userId === leave.employeeId
+      );
+      return {
+        ...leave,
+        firstName: employee.firstName,
+        lastName: employee.lastName,
+        email: employee.email,
+        imageUrl: employee.imageUrl,
+      };
+    });
+    res.json(finalData);
+  }
+);
+
+// get all leaves by employee id sort by date
+app.get("/api/users/employees/leave/:employeeId", async function (req, res) {
+  const employeeId = req.params.employeeId;
+  console.log("employeeId", employeeId);
+  const params = {
+    TableName: LEAVES_CALENDAR_TABLE,
+    FilterExpression: "#employeeId = :employeeId",
+    ExpressionAttributeNames: {
+      "#employeeId": "employeeId",
+    },
+    ExpressionAttributeValues: {
+      ":employeeId": employeeId,
+    },
+  };
+  const { Items: leaves } = await dynamoDbClient.send(new ScanCommand(params));
+  const sortedLeaves = leaves.sort((a, b) => {
+    const dateA = new Date(a.createdAt);
+    const dateB = new Date(b.createdAt);
+    return dateB - dateA;
+  });
+  res.json(sortedLeaves);
+});
+
+//  get all approved  leaves by employee id and reduce by types
+app.get(
+  "/api/users/employees/leave/approved/:employeeId",
+  async function (req, res) {
+    const employeeId = req.params.employeeId;
+    // console.log("employeeId", employeeId);
+    const params = {
+      TableName: LEAVES_CALENDAR_TABLE,
+      FilterExpression: "#employeeId = :employeeId AND #status = :status",
+      ExpressionAttributeNames: {
+        "#employeeId": "employeeId",
+        "#status": "status",
+      },
+      ExpressionAttributeValues: {
+        ":employeeId": employeeId,
+        ":status": "approved",
+      },
+    };
+    const { Items: leaves } = await dynamoDbClient.send(
+      new ScanCommand(params)
+    );
+    const leaveTypes = leaves.reduce((acc, leave) => {
+      if (!acc[leave.leaveType]) {
+        acc[leave.leaveType] = 0;
+      }
+      acc[leave.leaveType]++;
+      return acc;
+    }, {});
+
+    // calculate remaining leaves
+    const remainingLeaves = {
+      casual: 12 - leaveTypes.casual || 12,
+      fullDay: 12 - leaveTypes.fullDay || 12,
+      halfDay: 12 - leaveTypes.halfDay || 12,
+      medical: 12 - leaveTypes.medical || 12,
+    };
+
+    res.json({ leaveTypes, remainingLeaves });
+  }
+);
+// update leave request status
+
+app.put(
+  "/api/users/employees/leave/request/response/:leaveId",
+  async function (req, res) {
+    const leaveId = req.params.leaveId;
+    const { status, createdAt } = req.body;
+
+    const params = {
+      TableName: LEAVES_CALENDAR_TABLE,
+      Key: {
+        leaveId,
+        createdAt,
+      },
+      UpdateExpression: "set #status = :status",
+      ExpressionAttributeNames: {
+        "#status": "status",
+      },
+      ExpressionAttributeValues: {
+        ":status": status,
+      },
+    };
+    try {
+      await dynamoDbClient.send(new UpdateCommand(params));
+      res.json({
+        message: "Leave request status updated successfully",
+      });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: errors.createUserError });
+    }
+  }
+);
+
+   
+
 
 module.exports.handler = serverless(app);
