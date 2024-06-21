@@ -144,79 +144,111 @@ app.get(
 );
 
 
-app.post("/api/users/attendance/mark", rolesMiddleware(["hr","employee"]), async function (req, res) {
-  try {
-    const { employeeId, companyId, time, isCheckedIn, isCheckedOut, isWorkFromHome } = req.body;
+app.post(
+  "/api/users/attendance/mark",
+  rolesMiddleware(["hr", "employee"]),
+  async function (req, res) {
+    try {
+      const {
+        employeeId,
+        companyId,
 
-    // Validate input data
-    if (!employeeId || !companyId || !time || isCheckedIn === undefined || isCheckedOut === undefined || isWorkFromHome === undefined) {
-      return res.status(400).json({ error: errors.invalidInputData});
-    }
+        checkedIn,
+        checkedOut,
+        isWorkFromHome,
+      } = req.body;
 
-    // Check if the employee exists
-    const employeeParams = {
-      TableName: EMPLOYEES_TABLE,
-      Key: { userId: employeeId },
-    };
-
-    const { Item: employee } = await dynamoDbClient.send(new GetCommand(employeeParams));
-
-    if (!employee || employee.companyId !== companyId) {
-      return res.status(404).json({ error: errors.userNotFound });
-    }
-
-    // Fetch existing attendance record for the day
-    const today = new Date().toISOString().split('T')[0];
-    const attendanceId = employeeId+ today;
-    const attendanceParams = {
-      TableName: ATTENDANCE_TABLE,
-      Key: { date: today, attendanceId: attendanceId }
-    };
-
-    let { Item: existingAttendance } = await dynamoDbClient.send(new GetCommand(attendanceParams));
-
-    // If a check-in is marked
-    if (isCheckedIn) {
-      if (existingAttendance && existingAttendance.isCheckedIn) {
-        return res.status(400).json({ error: errors.alreadyCheckedIn });
+      // Validate input data
+      if (
+        !employeeId ||
+        !companyId ||
+        checkedIn === undefined ||
+        checkedOut === undefined ||
+        isWorkFromHome === undefined
+      ) {
+        return res.status(400).json({ error: errors.invalidInputData });
       }
-      // If a check-out is not marked yet or the user hasn't checked in yet, create a new record for check-in
-      if (!existingAttendance || !existingAttendance.isCheckedOut) {
-        const checkInRecord = {
-          attendanceId: attendanceId,
-          companyId,
-          date: today,
-          time,
-          isCheckedIn: true,
-          isCheckedOut: false,
-          isWorkFromHome
-        };
-        await dynamoDbClient.send(new PutCommand({ TableName: ATTENDANCE_TABLE, Item: checkInRecord }));
-        return res.json({ message: messages.checkInMarkedSuccess});
-      }
-    }
 
-    // If a check-out is marked
-    if (isCheckedOut) {
-      if (!existingAttendance || !existingAttendance.isCheckedIn) {
-        return res.status(400).json({ error: errors.previousCheckInNotFound });
-      }
-      if (existingAttendance.isCheckedOut) {
-        return res.status(400).json({ error: errors.alreadyCheckedOut });
-      }
-      // Update the existing record for check-out
-      existingAttendance.isCheckedOut = true;
-      existingAttendance.time = time;
-      await dynamoDbClient.send(new PutCommand({ TableName: ATTENDANCE_TABLE, Item: existingAttendance }));
-      return res.json({ message: messages.checkOutMarkedSuccess });
-    }
+      // Check if the employee exists
+      const employeeParams = {
+        TableName: EMPLOYEES_TABLE,
+        Key: { userId: employeeId },
+      };
 
-    return res.status(400).json({ error: errors.invalidInputData });
-  } catch (error) {
-    console.error(error);
-    return res.status(500).json({ error: errors.markAttendanceError });
+      const { Item: employee } = await dynamoDbClient.send(
+        new GetCommand(employeeParams)
+      );
+
+      if (!employee || employee.companyId !== companyId) {
+        return res.status(404).json({ error: errors.userNotFound });
+      }
+
+      // Fetch existing attendance record for the day
+      const today = new Date().toISOString().split("T")[0];
+      const attendanceId = employeeId + today;
+      const attendanceParams = {
+        TableName: ATTENDANCE_TABLE,
+        Key: { date: today, attendanceId: attendanceId },
+      };
+
+      let { Item: existingAttendance } = await dynamoDbClient.send(
+        new GetCommand(attendanceParams)
+      );
+
+      // If a check-in is marked
+      if (isCheckedIn) {
+        if (existingAttendance && existingAttendance.isCheckedIn) {
+          return res.status(400).json({ error: errors.alreadyCheckedIn });
+        }
+        // If a check-out is not marked yet or the user hasn't checked in yet, create a new record for check-in
+        if (!existingAttendance || !existingAttendance.isCheckedOut) {
+          const checkInRecord = {
+            attendanceId: attendanceId,
+            companyId,
+            date: today,
+            time,
+            isCheckedIn: true,
+            isCheckedOut: false,
+            isWorkFromHome,
+          };
+          await dynamoDbClient.send(
+            new PutCommand({ TableName: ATTENDANCE_TABLE, Item: checkInRecord })
+          );
+          return res.json({ message: messages.checkInMarkedSuccess });
+        }
+      }
+
+      // If a check-out is marked
+      if (isCheckedOut) {
+        if (!existingAttendance || !existingAttendance.isCheckedIn) {
+          return res
+            .status(400)
+            .json({ error: errors.previousCheckInNotFound });
+        }
+        if (existingAttendance.isCheckedOut) {
+          return res.status(400).json({ error: errors.alreadyCheckedOut });
+        }
+        // Update the existing record for check-out
+        existingAttendance.isCheckedOut = true;
+        existingAttendance.time = time;
+        await dynamoDbClient.send(
+          new PutCommand({
+            TableName: ATTENDANCE_TABLE,
+            Item: existingAttendance,
+          })
+        );
+        return res.json({ message: messages.checkOutMarkedSuccess });
+      }
+
+      return res.status(400).json({ error: errors.invalidInputData });
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ error: errors.markAttendanceError });
+    }
   }
-});
+);
+
+
 app.get("/api/users/attendance/checkForTheDay/:employeeId", rolesMiddleware(["hr", "employee"]), async function (req, res) {
   try {
     const { employeeId } = req.params;
