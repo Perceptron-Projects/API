@@ -45,5 +45,7 @@ module.exports = {
   teamAlreadyExists: 'Team Name already exists',
   projectAlreadyExists: 'Project Name already exists',
   getTeamsError: "Could not get teams",
-
+  whfDateAlreadyExists: "Work from home request already sent for this date",
+  createAttendanceError: "Could not create attendance",
+  getAttendanceError: "Could not get attendance",
 };
