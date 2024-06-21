@@ -249,29 +249,36 @@ app.post(
 );
 
 
-app.get("/api/users/attendance/checkForTheDay/:employeeId", rolesMiddleware(["hr", "employee"]), async function (req, res) {
-  try {
-    const { employeeId } = req.params;
-    const today = new Date().toISOString().split('T')[0];
-    const attendanceId = employeeId + today;
+app.get(
+  "/api/users/attendance/checkForTheDay/:employeeId",
+  rolesMiddleware(["hr", "employee"]),
+  async function (req, res) {
+    try {
+      const { employeeId } = req.params;
+      const today = new Date().toISOString().split("T")[0];
+      const attendanceId = employeeId + today;
 
-    // Fetch existing attendance record for the day
-    const attendanceParams = {
-      TableName: ATTENDANCE_TABLE,
-      Key: { date: today, attendanceId: attendanceId }
-    };
+      // Fetch existing attendance record for the day
+      const attendanceParams = {
+        TableName: ATTENDANCE_TABLE,
+        Key: { date: today, attendanceId: attendanceId },
+      };
 
-    const { Item: existingAttendance } = await dynamoDbClient.send(new GetCommand(attendanceParams));
+      const { Item: existingAttendance } = await dynamoDbClient.send(
+        new GetCommand(attendanceParams)
+      );
 
-    if (!existingAttendance) {
-      return res.status(404).json({ error: errors.attendanceRecordNotFound });
+      if (!existingAttendance) {
+        return res.status(404).json({ error: errors.attendanceRecordNotFound });
+      }
+
+      return res.json(existingAttendance);
+    } catch (error) {
+      return res.status(500).json({ error: errors.retrieveAttendanceError });
     }
-
-    return res.json(existingAttendance);
-  } catch (error) {
-    return res.status(500).json({ error: errors.retrieveAttendanceError });
   }
-});
+);
+
 
 app.get("/api/users/:userId", rolesMiddleware(["admin","branchadmin","hr","employee","supervisor"]), async function (req, res) { 
   const params = {
