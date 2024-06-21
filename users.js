@@ -248,7 +248,6 @@ app.post(
   }
 );
 
-
 app.get(
   "/api/users/attendance/checkForTheDay/:employeeId",
   rolesMiddleware(["hr", "employee"]),
@@ -1892,6 +1891,39 @@ app.post("/api/users/login", async function (req, res) {
 
 // Amasha's code
 
+
+//get employee workfrom home requests
+app.get(
+  "/api/users/attendance/request/employees/:employeeId",
+  async function (req, res) {
+    employeeId = req.params.employeeId;
+
+    const params = {
+      TableName: ATTENDANCE_TABLE,
+      FilterExpression:
+        "#employeeId = :employeeId AND( #whf = :whf1 OR #whf = :whf2 OR #whf = :whf3) ",
+      ExpressionAttributeNames: {
+        "#employeeId": "employeeId",
+        "#whf": "whf",
+      },
+      ExpressionAttributeValues: {
+        ":employeeId": employeeId,
+        ":whf1": "accepted",
+        ":whf2": "rejected",
+        ":whf3": "pending",
+      },
+    };
+
+    try {
+      const { Items } = await dynamoDbClient.send(new ScanCommand(params));
+      res.json(Items);
+    } catch (error) {
+      res.status(500).json({ error: errors.getAttendanceError });
+      console.error(error);
+    }
+  }
+);
+
 //get all teams 
 
 app.get("/api/users/teams/all", async function (req, res) {
@@ -2343,7 +2375,7 @@ app.get("/api/users/attendance/request/:companyId", async function (req, res) {
   const employees = attendance.map((attendance) => attendance.employeeId);
   const uniqueEmployees = [...new Set(employees)];
 
-//get unique employees data from uniqueEmployees array and add to employeesData array
+  //get unique employees data from uniqueEmployees array and add to employeesData array
 
   const getEmployeeData = async (employeeId) => {
     return new Promise((resolve, reject) => {
@@ -2369,8 +2401,6 @@ app.get("/api/users/attendance/request/:companyId", async function (req, res) {
     employeeData.push(employee);
   }
 
-
-  
   // join employee data with attendance data
 
   const finalData = attendance.map((attendance) => {
@@ -2385,7 +2415,6 @@ app.get("/api/users/attendance/request/:companyId", async function (req, res) {
       imageUrl: employee.imageUrl,
     };
   });
-
   res.json(finalData);
 });
 
