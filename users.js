@@ -833,6 +833,52 @@ app.delete("/api/users/company/:id", rolesMiddleware(["superadmin"]), async func
 
     await dynamoDbClient.send(new DeleteCommand(companyParams));
 
+    //delete employees and admins of company also
+    const employeeParams = {
+      TableName: EMPLOYEES_TABLE,
+      FilterExpression: "#companyId = :companyId",
+      ExpressionAttributeNames: {
+        "#companyId": "companyId",
+      },
+      ExpressionAttributeValues: {
+        ":companyId": companyId
+      },
+    };
+
+    const adminParams = {
+      TableName: ADMINS_TABLE,
+      FilterExpression: "#companyId = :companyId",
+      ExpressionAttributeNames: {
+        "#companyId": "companyId",
+      },
+      ExpressionAttributeValues: {
+        ":companyId": companyId
+      },
+    };
+
+    const { Items: employees } = await dynamoDbClient.send(new ScanCommand(employeeParams));
+    const { Items: admins } = await dynamoDbClient.send(new ScanCommand(adminParams));
+
+    for (const employee of employees) {
+      const employeeParams = {
+        TableName: EMPLOYEES_TABLE,
+        Key: {
+          userId: employee.userId,
+        },
+      };
+      await dynamoDbClient.send(new DeleteCommand(employeeParams));
+    }
+
+    for (const admin of admins) {
+      const adminParams = {
+        TableName: ADMINS_TABLE,
+        Key: {
+          userId: admin.userId,
+        },
+      };
+      await dynamoDbClient.send(new DeleteCommand(adminParams));
+    }
+
     res.json({ message: "Company deleted successfully" });
   } catch (error) {
     console.log(error);
@@ -840,6 +886,7 @@ app.delete("/api/users/company/:id", rolesMiddleware(["superadmin"]), async func
   }
 }
 );
+
 
 app.get("/api/users/companies/all", rolesMiddleware(["superadmin"]), async function (req, res) {
   
