@@ -144,6 +144,39 @@ app.get(
 );
 
 
+//get employee workfrom home requests
+app.get(
+  "/api/users/attendance/request/employees/:employeeId",
+  async function (req, res) {
+    employeeId = req.params.employeeId;
+
+    const params = {
+      TableName: ATTENDANCE_TABLE,
+      FilterExpression:
+        "#employeeId = :employeeId AND( #whf = :whf1 OR #whf = :whf2 OR #whf = :whf3) ",
+      ExpressionAttributeNames: {
+        "#employeeId": "employeeId",
+        "#whf": "whf",
+      },
+      ExpressionAttributeValues: {
+        ":employeeId": employeeId,
+        ":whf1": "accepted",
+        ":whf2": "rejected",
+        ":whf3": "pending",
+      },
+    };
+
+    try {
+      const { Items } = await dynamoDbClient.send(new ScanCommand(params));
+      res.json(Items);
+    } catch (error) {
+      res.status(500).json({ error: errors.getAttendanceError });
+      console.error(error);
+    }
+  }
+);
+
+
 app.post("/api/users/attendance/mark", rolesMiddleware(["hr","employee"]), async function (req, res) {
   try {
     const { employeeId, companyId, time, isCheckedIn, isCheckedOut, isWorkFromHome } = req.body;
@@ -2075,7 +2108,11 @@ app.post("/api/users/employees/attendance/checkin", async function (req, res) {
     TableName: ATTENDANCE_TABLE,
     Item: {
       attendanceId: uuidv4(),
-      reqTime: new Date().toUTCString(),
+      reqTime: new Date().toISOString(),
+      whf: "no",
+
+      stage: "checkIn",
+
       ...req.body,
     },
   };
@@ -2086,24 +2123,24 @@ app.post("/api/users/employees/attendance/checkin", async function (req, res) {
     });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: errors.createUserError });
+    res.status(500).json({ error: errors.createAttendanceError });
   }
 });
-
 app.put(
   "/api/users/employees/attendance/checkin/:attendanceId",
   async function (req, res) {
     const attendanceId = req.params.attendanceId;
-    console.log("attendanceId", attendanceId);
+
     const params = {
       TableName: ATTENDANCE_TABLE,
       Key: {
         attendanceId: attendanceId,
         reqTime: req.body.reqTime,
       },
-      UpdateExpression: "SET checkIn = :checkIn",
+      UpdateExpression: "SET checkIn = :checkIn , stage = :stage",
       ExpressionAttributeValues: {
         ":checkIn": req.body.checkIn,
+        ":stage": "checkIn",
       },
       ConditionExpression: "attribute_exists(attendanceId)",
       ReturnValues: "ALL_NEW",
@@ -2174,60 +2211,9 @@ app.get("/api/users/company/employees/:companyId", async function (req, res) {
   res.json(employees);
 });
 
-
-// check in from office
-app.post("/api/users/employees/attendance/checkin", async function (req, res) {
-  const params = {
-    TableName: ATTENDANCE_TABLE,
-    Item: {
-      attendanceId: uuidv4(),
-      reqTime: new Date().toUTCString(),
-      ...req.body,
-    },
-  };
-  try {
-    await dynamoDbClient.send(new PutCommand(params));
-    res.json({
-      message: "Attendance added successfully",
-    });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: errors.createUserError });
-  }
-});
-
-app.put(
-  "/api/users/employees/attendance/checkin/:attendanceId",
-  async function (req, res) {
-    const attendanceId = req.params.attendanceId;
-    console.log("attendanceId", attendanceId);
-    const params = {
-      TableName: ATTENDANCE_TABLE,
-      Key: {
-        attendanceId: attendanceId,
-        reqTime: req.body.reqTime,
-      },
-      UpdateExpression: "SET checkIn = :checkIn",
-      ExpressionAttributeValues: {
-        ":checkIn": req.body.checkIn,
-      },
-      ConditionExpression: "attribute_exists(attendanceId)",
-      ReturnValues: "ALL_NEW",
-    };
-    try {
-      await dynamoDbClient.send(new UpdateCommand(params));
-      res.json({ message: "Attendance updated successfully" });
-    } catch (error) {
-      console.error(error);
-      res.status(500).json({ messages: "Failed to update attendance" });
-    }
-  }
-);
-
 // mark check out from office
 
 // check out
-
 app.put(
   "/api/users/employees/attendance/checkout/:attendanceId",
   async function (req, res) {
@@ -2239,9 +2225,10 @@ app.put(
         attendanceId: attendanceId,
         reqTime: req.body.reqTime,
       },
-      UpdateExpression: "SET checkOut = :checkOut",
+      UpdateExpression: "SET checkOut = :checkOut , stage = :stage",
       ExpressionAttributeValues: {
         ":checkOut": new Date(req.body.checkOut).toISOString(),
+        ":stage": "completed",
       },
       ConditionExpression: "attribute_exists(attendanceId)",
       ReturnValues: "ALL_NEW",
@@ -2260,12 +2247,33 @@ app.put(
 // new whf request
 
 app.post("/api/users/employees/attendance/request", async function (req, res) {
+  // check if whfDate already exists
+
+  req.body.whfDate = new Date(req.body.whfDate).toLocaleDateString({
+    timeZone: "Asia/Kolkata",
+  });
+  const { Items: whfDates } = await dynamoDbClient.send(
+    new ScanCommand({
+      TableName: ATTENDANCE_TABLE,
+      FilterExpression: "whfDate = :whfDate AND employeeId = :employeeId",
+      ExpressionAttributeValues: {
+        ":employeeId": req.body.employeeId,
+        ":whfDate": req.body.whfDate,
+      },
+    })
+  );
+  if (whfDates && whfDates.length > 0) {
+    res.status(409).json({ error: errors.whfDateAlreadyExists });
+    return;
+  }
+
   const params = {
     TableName: ATTENDANCE_TABLE,
     Item: {
       attendanceId: uuidv4(),
       reqTime: new Date().toISOString(),
       whf: "pending",
+      stage: "request",
       ...req.body,
     },
   };
@@ -2363,10 +2371,11 @@ app.put(
         attendanceId: attendanceId,
         reqTime: req.body.reqTime,
       },
-      UpdateExpression: "SET whf = :whf",
+      UpdateExpression: "SET whf = :whf , stage = :stage",
 
       ExpressionAttributeValues: {
         ":whf": req.body.whf,
+        ":stage": req.body.stage,
       },
       ReturnValues: "ALL_NEW",
     };
@@ -2382,26 +2391,23 @@ app.put(
 );
 
 
-// get latest whf request
+// get latest checkIn by stage
 app.get(
-  "/api/users/employees/attendance/:employeeId",
+  "/api/users/employees/attendance/checkin/:employeeId",
   async function (req, res) {
     const employeeId = req.params.employeeId;
-    console.log("employeeId:", employeeId);
 
     const params = {
       TableName: ATTENDANCE_TABLE,
-
-      FilterExpression: "#employeeId = :employeeId",
-
+      FilterExpression: "#employeeId = :employeeId AND #stage = :stage",
       ExpressionAttributeNames: {
         "#employeeId": "employeeId",
+        "#stage": "stage",
       },
-
       ExpressionAttributeValues: {
         ":employeeId": employeeId,
+        ":stage": "checkIn",
       },
-
       ScanIndexForward: false,
     };
     const { Items: attendance } = await dynamoDbClient.send(
@@ -2417,6 +2423,7 @@ app.get(
 );
 
 // get attendance by employee id by between start date and end date and current year
+
 app.get(
   "/api/users/employees/attendance/:employeeId/:startDate/:endDate",
   async function (req, res) {
@@ -2452,7 +2459,7 @@ app.get(
         fri: 0,
       };
       attendance.forEach((attendance) => {
-        // if check attendance have checkIn and checkOut
+        // iff check attendance have checkIn and checkOut
         if (attendance.checkIn && attendance.checkOut) {
           const checkIn = new Date(attendance.checkIn);
           const checkOut = new Date(attendance.checkOut);
@@ -2482,6 +2489,42 @@ app.get(
   }
 );
 
+
+// get latest stage equal to whf or office and requestedDate is today
+app.get(
+  "/api/users/employees/attendance/:employeeId",
+  async function (req, res) {
+    //convert new date into india timezone
+    const newDate = new Date().toLocaleDateString({
+      timeZone: "Asia/Kolkata",
+    });
+
+    const employeeId = req.params.employeeId;
+    const params = {
+      TableName: ATTENDANCE_TABLE,
+      FilterExpression:
+        "#employeeId = :employeeId  AND #whfDate = :whfDate AND (#stage = :stage1 OR #stage = :stage2)",
+      ExpressionAttributeNames: {
+        "#employeeId": "employeeId",
+        "#stage": "stage",
+        "#whfDate": "whfDate",
+      },
+      ExpressionAttributeValues: {
+        ":employeeId": employeeId,
+        ":stage1": "whf",
+        ":stage2": "office",
+        ":whfDate": newDate,
+      },
+    };
+    try {
+      const { Items } = await dynamoDbClient.send(new ScanCommand(params));
+      res.json(Items);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: errors.getAttendanceError });
+    }
+  }
+);
 
 // End of Amasha's code
 
