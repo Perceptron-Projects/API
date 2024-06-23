@@ -176,6 +176,7 @@ app.get(
   }
 );
 
+//Mark Employee Attenadance for a given day
 
 app.post("/api/users/attendance/mark", rolesMiddleware(["hr","employee"]), async function (req, res) {
   try {
@@ -250,6 +251,8 @@ app.post("/api/users/attendance/mark", rolesMiddleware(["hr","employee"]), async
     return res.status(500).json({ error: errors.markAttendanceError });
   }
 });
+
+
 app.get("/api/users/attendance/checkForTheDay/:employeeId", rolesMiddleware(["hr", "employee"]), async function (req, res) {
   try {
     const { employeeId } = req.params;
@@ -274,6 +277,7 @@ app.get("/api/users/attendance/checkForTheDay/:employeeId", rolesMiddleware(["hr
   }
 });
 
+// Get all attendance records for a given employee
 app.get("/api/users/:userId", rolesMiddleware(["admin","branchadmin","hr","employee","supervisor"]), async function (req, res) { 
   const params = {
     TableName: EMPLOYEES_TABLE,
@@ -2126,6 +2130,8 @@ app.post("/api/users/employees/attendance/checkin", async function (req, res) {
     res.status(500).json({ error: errors.createAttendanceError });
   }
 });
+
+//Update chckin details of employee by employeeId
 app.put(
   "/api/users/employees/attendance/checkin/:attendanceId",
   async function (req, res) {
@@ -2525,6 +2531,381 @@ app.get(
     }
   }
 );
+
+//self-edit profile for employees
+
+app.put(
+  "/api/users/employee/edit-profile/:employeeId",
+  async function (req, res) {
+    const id = req.params.employeeId;
+
+
+
+
+    // check req body
+    if (!req.body) {
+      res.status(400).json({ error: "Request body is empty" });
+      return;
+    }
+
+
+    // check if email already exists employee table
+
+
+    const emailParams = {
+      TableName: EMPLOYEES_TABLE,
+      FilterExpression: "#email = :email",
+      ExpressionAttributeNames: {
+        "#email": "email",
+      },
+      ExpressionAttributeValues: {
+        ":email": req.body.email,
+      },
+    };
+    const { Items: employeesEmail } = await dynamoDbClient.send(
+      new ScanCommand(emailParams)
+    );
+    if (employeesEmail.length > 0 && employeesEmail[0].userId !== id) {
+      res.status(400).json({ error: "Email already exists" });
+      return;
+    }
+
+
+    // check if email already exists in admin table
+
+
+    const adminEmailParams = {
+      TableName: ADMINS_TABLE,
+      FilterExpression: "#email = :email",
+      ExpressionAttributeNames: {
+        "#email": "email",
+      },
+      ExpressionAttributeValues: {
+        ":email": req.body.email,
+      },
+    };
+    const { Items: adminsEmail } = await dynamoDbClient.send(
+      new ScanCommand(adminEmailParams)
+    );
+    if (adminsEmail.length > 0 && adminsEmail[0].userId !== id) {
+      res.status(400).json({ error: "Email already exists" });
+      return;
+    }
+
+
+    // check if username already exists employee table
+    const params = {
+      TableName: EMPLOYEES_TABLE,
+      FilterExpression: "#username = :username",
+      ExpressionAttributeNames: {
+        "#username": "username",
+      },
+      ExpressionAttributeValues: {
+        ":username": req.body.username,
+      },
+    };
+    const { Items: employeesUsername } = await dynamoDbClient.send(
+      new ScanCommand(params)
+    );
+    if (employeesUsername.length > 0 && employeesUsername[0].userId !== id) {
+      res.status(400).json({ error: "Username already exists" });
+      return;
+    }
+
+
+    // check if username already exists in admin table
+    const adminParams = {
+      TableName: ADMINS_TABLE,
+      FilterExpression: "#userName = :userName",
+      ExpressionAttributeNames: {
+        "#userName": "userName",
+      },
+      ExpressionAttributeValues: {
+        ":userName": req.body.username,
+      },
+    };
+    const { Items: adminsUsername } = await dynamoDbClient.send(
+      new ScanCommand(adminParams)
+    );
+    if (adminsUsername.length > 0 && adminsUsername[0].userId !== id) {
+      res.status(400).json({ error: "Username already exists" });
+      return;
+    }
+
+
+    // get employee details
+    const employeeDetailsParam = {
+      TableName: EMPLOYEES_TABLE,
+      Key: {
+        userId: id,
+      },
+    };
+    const { Item: employeeDetails } = await dynamoDbClient.send(
+      new GetCommand(employeeDetailsParam)
+    );
+
+
+    if (
+      employeeDetails.password &&
+      req.body.currentPassword &&
+      !(await bcrypt.compare(
+        req.body.currentPassword,
+        employeeDetails.password
+      ))
+    ) {
+      res.status(400).json({ error: "Current password is incorrect" });
+      return;
+    }
+
+
+    if (req.body.currentPassword && req.body.newPassword) {
+      req.body.password = bcrypt.hashSync(req.body.newPassword, 10);
+      req.body.newPassword = null;
+      req.body.currentPassword = null;
+    } else {
+      req.body.password = employeeDetails.password;
+    }
+
+
+    //save image to s3
+    const base64regex =
+      /^([0-9a-zA-Z+/]{4})*(([0-9a-zA-Z+/]{2}==)|([0-9a-zA-Z+/]{3}=))?$/;
+
+
+    if (base64regex.test(req.body.profileImage)) {
+      try {
+        const uploadResult = await uploadImage(req.body.profileImage);
+        req.body.imageUrl = uploadResult.imageUrl;
+        req.body.profileImage = null;
+        console.log(uploadResult);
+      } catch (error) {
+        console.error("Error:", error);
+        res.status(500).json({ error: errors.imageUploadError });
+        return;
+      }
+    } else {
+      req.body.imageUrl = req.body.profileImage;
+      req.body.profileImage = null;
+    }
+
+
+    // update admin details
+
+
+    const updateParams = {
+      TableName: EMPLOYEES_TABLE,
+      Key: {
+        userId: id,
+      },
+      UpdateExpression:
+        "SET firstName = :firstName, lastName = :lastName, email = :email, username = :username, password = :password, imageUrl = :imageUrl, contactNo = :contactNo",
+      ExpressionAttributeValues: {
+        ":firstName": req.body.firstName,
+        ":lastName": req.body.lastName,
+        ":email": req.body.email,
+        ":username": req.body.username,
+        ":password": req.body.password,
+        ":contactNo": req.body.contactNo,
+        ":imageUrl": req.body.imageUrl,
+      },
+      ReturnValues: "ALL_NEW",
+    };
+
+
+    try {
+      const result = await dynamoDbClient.send(new UpdateCommand(updateParams));
+      res.json(result.Attributes);
+    } catch (error) {
+   
+      res.status(500).json({ error: "Could not update employee" });
+    }
+  }
+);
+
+
+//self edit profile for admins
+
+app.put("/api/users/admin/edit-profile/:adminId", async function (req, res) {
+  const id = req.params.adminId;
+
+
+  console.log(req.body);
+
+
+  // check req body
+  if (!req.body) {
+    res.status(400).json({ error: "Request body is empty" });
+    return;
+  }
+
+
+  // check if email already exists employee table
+
+
+  const emailParams = {
+    TableName: EMPLOYEES_TABLE,
+    FilterExpression: "#email = :email",
+    ExpressionAttributeNames: {
+      "#email": "email",
+    },
+    ExpressionAttributeValues: {
+      ":email": req.body.email,
+    },
+  };
+  const { Items: employeesEmail } = await dynamoDbClient.send(
+    new ScanCommand(emailParams)
+  );
+  if (employeesEmail.length > 0 && employeesEmail[0].userId !== id) {
+    res.status(400).json({ error: "Email already exists" });
+    return;
+  }
+
+
+  // check if email already exists in admin table
+
+
+  const adminEmailParams = {
+    TableName: ADMINS_TABLE,
+    FilterExpression: "#email = :email",
+    ExpressionAttributeNames: {
+      "#email": "email",
+    },
+    ExpressionAttributeValues: {
+      ":email": req.body.email,
+    },
+  };
+  const { Items: adminsEmail } = await dynamoDbClient.send(
+    new ScanCommand(adminEmailParams)
+  );
+  if (adminsEmail.length > 0 && adminsEmail[0].userId !== id) {
+    res.status(400).json({ error: "Email already exists" });
+    return;
+  }
+
+
+  // check if username already exists employee table
+  const params = {
+    TableName: EMPLOYEES_TABLE,
+    FilterExpression: "#username = :username",
+    ExpressionAttributeNames: {
+      "#username": "username",
+    },
+    ExpressionAttributeValues: {
+      ":username": req.body.username,
+    },
+  };
+  const { Items: employeesUsername } = await dynamoDbClient.send(
+    new ScanCommand(params)
+  );
+  if (employeesUsername.length > 0 && employeesUsername[0].userId !== id) {
+    res.status(400).json({ error: "Username already exists" });
+    return;
+  }
+
+
+  // check if username already exists in admin table
+  const adminParams = {
+    TableName: ADMINS_TABLE,
+    FilterExpression: "#userName = :userName",
+    ExpressionAttributeNames: {
+      "#userName": "userName",
+    },
+    ExpressionAttributeValues: {
+      ":userName": req.body.username,
+    },
+  };
+  const { Items: adminsUsername } = await dynamoDbClient.send(
+    new ScanCommand(adminParams)
+  );
+  if (adminsUsername.length > 0 && adminsUsername[0].userId !== id) {
+    res.status(400).json({ error: "Username already exists" });
+    return;
+  }
+
+
+  // get admin details
+  const adminDetailsParams = {
+    TableName: ADMINS_TABLE,
+    Key: {
+      userId: id,
+    },
+  };
+  const { Item: adminDetails } = await dynamoDbClient.send(
+    new GetCommand(adminDetailsParams)
+  );
+
+
+  if (
+    adminDetails.password &&
+    req.body.currentPassword &&
+    !(await bcrypt.compare(req.body.currentPassword, adminDetails.password))
+  ) {
+    res.status(400).json({ error: "Current password is incorrect" });
+    return;
+  }
+
+
+  if (req.body.currentPassword && req.body.newPassword) {
+    req.body.password = bcrypt.hashSync(req.body.newPassword, 10);
+    req.body.newPassword = null;
+    req.body.currentPassword = null;
+  } else {
+    req.body.password = adminDetails.password;
+  }
+
+
+  //save image to s3
+  const base64regex =
+    /^([0-9a-zA-Z+/]{4})*(([0-9a-zA-Z+/]{2}==)|([0-9a-zA-Z+/]{3}=))?$/;
+
+
+  if (base64regex.test(req.body.profileImage)) {
+    try {
+      const uploadResult = await uploadImage(req.body.profileImage);
+      req.body.adminImageUrl = uploadResult.imageUrl;
+      req.body.profileImage = null;
+      console.log(uploadResult);
+    } catch (error) {
+      console.error("Error:", error);
+      res.status(500).json({ error: errors.imageUploadError });
+      return;
+    }
+  } else {
+    req.body.adminImageUrl = req.body.profileImage;
+    req.body.profileImage = null;
+  }
+
+
+  // update admin details
+
+
+  const updateParams = {
+    TableName: ADMINS_TABLE,
+    Key: {
+      userId: id,
+    },
+    UpdateExpression:
+      "SET firstName = :firstName, lastName = :lastName, email = :email, userName = :userName, password = :password, adminImageUrl = :adminImageUrl, contactNo = :contactNo",
+    ExpressionAttributeValues: {
+      ":firstName": req.body.firstName,
+      ":lastName": req.body.lastName,
+      ":email": req.body.email,
+      ":userName": req.body.username,
+      ":password": req.body.password,
+      ":contactNo": req.body.contactNo,
+      ":adminImageUrl": req.body.adminImageUrl,
+    },
+    ReturnValues: "ALL_NEW",
+  };
+
+
+  try {
+    const result = await dynamoDbClient.send(new UpdateCommand(updateParams));
+    res.json(result.Attributes);
+  } catch (error) {
+    res.status(500).json({ error });
+  }
+});
 
 // End of Amasha's code
 
