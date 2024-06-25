@@ -42,13 +42,14 @@ module.exports = {
   userNotFound: 'Could not find user with provided "userId"',
   userWithinRadiusError: 'Error checking if the user is within the radius',
   imageUploadError: 'Error uploading image',
-  teamAlreadyExists: 'Team Name Already Exists',
-  projectAlreadyExists: 'Project Name Already Exists',
-  getTeamsError: "Could not get teams",
-  whfDateAlreadyExists: "Work From Home Request Already Exists for this date",
   createAttendanceError: "Could not create attendance",
   getAttendanceError: "Could not get attendance",
   adminUpdateError: "Could not update admin",
   userUpdateError: "Could not update user",
+  teamAlreadyExists: 'Team Name already exists',
+  projectAlreadyExists: 'Project Name already exists',
+  getTeamsError: "Could not get teams",
+  whfDateAlreadyExists: "Alredy sent a work from home request for this date",
+
 
 };

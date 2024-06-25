@@ -34,7 +34,7 @@ async function uploadImage(imageDataUri) {
 
     await s3Client.send(new PutObjectCommand(uploadParams));
 
-    const imageUrl = `https://${IMAGES_BUCKET_NAME}.s3.amazonaws.com/${imageId}.jpg`;
+    const imageUrl = `https://d3fsn5oaxfqfda.cloudfront.net/${imageId}.jpg`;
     return { imageUrl };
   } catch (error) {
     console.error("Error:", error);
