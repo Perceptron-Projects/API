@@ -92,102 +92,9 @@ app.get("/api/users/isWithinRadius/:companyId", rolesMiddleware(["admin","hr","e
   }
 });
 
-app.post("/api/users/attendance/mark", rolesMiddleware(["hr","employee"]), async function (req, res) {
-  try {
-    const { employeeId, companyId, time, isCheckedIn, isCheckedOut, isWorkFromHome } = req.body;
 
-    // Validate input data
-    if (!employeeId || !companyId || !time || isCheckedIn === undefined || isCheckedOut === undefined || isWorkFromHome === undefined) {
-      return res.status(400).json({ error: errors.invalidInputData});
-    }
 
-    // Check if the employee exists
-    const employeeParams = {
-      TableName: EMPLOYEES_TABLE,
-      Key: { userId: employeeId },
-    };
 
-    const { Item: employee } = await dynamoDbClient.send(new GetCommand(employeeParams));
-
-    if (!employee || employee.companyId !== companyId) {
-      return res.status(404).json({ error: errors.userNotFound });
-    }
-
-    // Fetch existing attendance record for the day
-    const today = new Date().toISOString().split('T')[0];
-    const attendanceId = employeeId+ today;
-    const attendanceParams = {
-      TableName: ATTENDANCE_TABLE,
-      Key: { date: today, attendanceId: attendanceId }
-    };
-
-    let { Item: existingAttendance } = await dynamoDbClient.send(new GetCommand(attendanceParams));
-
-    // If a check-in is marked
-    if (isCheckedIn) {
-      if (existingAttendance && existingAttendance.isCheckedIn) {
-        return res.status(400).json({ error: errors.alreadyCheckedIn });
-      }
-      // If a check-out is not marked yet or the user hasn't checked in yet, create a new record for check-in
-      if (!existingAttendance || !existingAttendance.isCheckedOut) {
-        const checkInRecord = {
-          attendanceId: attendanceId,
-          companyId,
-          date: today,
-          time,
-          isCheckedIn: true,
-          isCheckedOut: false,
-          isWorkFromHome
-        };
-        await dynamoDbClient.send(new PutCommand({ TableName: ATTENDANCE_TABLE, Item: checkInRecord }));
-        return res.json({ message: messages.checkInMarkedSuccess});
-      }
-    }
-
-    // If a check-out is marked
-    if (isCheckedOut) {
-      if (!existingAttendance || !existingAttendance.isCheckedIn) {
-        return res.status(400).json({ error: errors.previousCheckInNotFound });
-      }
-      if (existingAttendance.isCheckedOut) {
-        return res.status(400).json({ error: errors.alreadyCheckedOut });
-      }
-      // Update the existing record for check-out
-      existingAttendance.isCheckedOut = true;
-      existingAttendance.time = time;
-      await dynamoDbClient.send(new PutCommand({ TableName: ATTENDANCE_TABLE, Item: existingAttendance }));
-      return res.json({ message: messages.checkOutMarkedSuccess });
-    }
-
-    return res.status(400).json({ error: errors.invalidInputData });
-  } catch (error) {
-    console.error(error);
-    return res.status(500).json({ error: errors.markAttendanceError });
-  }
-});
-app.get("/api/users/attendance/checkForTheDay/:employeeId", rolesMiddleware(["hr", "employee"]), async function (req, res) {
-  try {
-    const { employeeId } = req.params;
-    const today = new Date().toISOString().split('T')[0];
-    const attendanceId = employeeId + today;
-
-    // Fetch existing attendance record for the day
-    const attendanceParams = {
-      TableName: ATTENDANCE_TABLE,
-      Key: { date: today, attendanceId: attendanceId }
-    };
-
-    const { Item: existingAttendance } = await dynamoDbClient.send(new GetCommand(attendanceParams));
-
-    if (!existingAttendance) {
-      return res.status(404).json({ error: errors.attendanceRecordNotFound });
-    }
-
-    return res.json(existingAttendance);
-  } catch (error) {
-    return res.status(500).json({ error: errors.retrieveAttendanceError });
-  }
-});
 
 app.get("/api/users/:userId", rolesMiddleware(["admin","branchadmin","hr","employee","supervisor"]), async function (req, res) { 
   const params = {
@@ -617,7 +524,7 @@ app.get("/api/users/admins/all", rolesMiddleware(["superadmin"]), async function
   }
 });
 
-app.get("/api/users/admins/:id", rolesMiddleware(["superadmin"]), async function (req, res) {
+app.get("/api/users/admins/:id", rolesMiddleware(["superadmin","admin","branchadmin"]), async function (req, res) {
   try {
     const adminId = req.params.id;
     const adminParams = {
@@ -1801,6 +1708,35 @@ app.post("/api/users/login", async function (req, res) {
 
 // Amasha's code
 
+// get all  teams by employee id
+
+app.get("/api/users/teams/employee/:employeeId", async function (req, res) {
+  const employeeId = req.params.employeeId;
+
+  if (!employeeId) {
+    res.status(400).json({ error: errors.invalidEmployeeId });
+    return;
+  }
+
+  // scan employee from teamMembers array to get teamId
+  const params = {
+    TableName: TEAM_TABLE,
+  };
+  try {
+    const { Items } = await dynamoDbClient.send(new ScanCommand(params));
+
+    // filter teams by employeeId
+    const finalizedItems = Items.filter((item) =>
+      item.teamMembers.some((member) => member.id === employeeId)
+    );
+
+    res.json(finalizedItems);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: errors.getTeamsError });
+  }
+});
+
 //get all teams 
 
 app.get("/api/users/teams/all", async function (req, res) {
@@ -1867,13 +1803,44 @@ app.delete("/api/users/team/:teamId", async function (req, res) {
 app.put("/api/users/team/:teamId", async function (req, res) {
   const teamId = req.params.teamId;
 
-  console.log("team", teamId, req.body);
   if (!teamId) {
     return res.status(400).json({ error: errors.invalidTeamId });
   }
 
   if (!req.body) {
     return res.status(400).json({ error: errors.invalidRequestBody });
+  }
+
+  // check if team already exists
+  const { Items } = await dynamoDbClient.send(
+    new ScanCommand({
+      TableName: TEAM_TABLE,
+      ProjectionExpression: "teamId",
+      FilterExpression: "teamName = :teamName",
+      ExpressionAttributeValues: {
+        ":teamName": req.body.teamName,
+      },
+    })
+  );
+  if (Items && Items.length > 0 && Items[0].teamId !== teamId) {
+    res.status(409).json({ error: errors.teamAlreadyExists });
+    return;
+  }
+
+  // check if project already exists
+  const { Items: projects } = await dynamoDbClient.send(
+    new ScanCommand({
+      TableName: TEAM_TABLE,
+      ProjectionExpression: "teamId",
+      FilterExpression: "projectName = :projectName",
+      ExpressionAttributeValues: {
+        ":projectName": req.body.projectName,
+      },
+    })
+  );
+  if (projects && projects.length > 0 && projects[0].teamId !== teamId) {
+    res.status(409).json({ error: errors.projectAlreadyExists });
+    return;
   }
 
   const base64regex =
@@ -1922,13 +1889,13 @@ app.put("/api/users/team/:teamId", async function (req, res) {
 
 // add new team
 
-app.post("/api/users/teams", rolesMiddleware(["supervisor"]),async function (req, res) {
+app.post("/api/users/teams", async function (req, res) {
   if (req.body.teamsImage) {
     try {
       const uploadResult = await uploadImage(req.body.teamsImage);
       req.body.teamsImage = uploadResult.imageUrl;
     } catch (error) {
-      console.error("Image Error:", error);
+      console.error("Error:", error);
       res.status(500).json({ error: errors.imageUploadError });
       return;
     }
@@ -1942,8 +1909,40 @@ app.post("/api/users/teams", rolesMiddleware(["supervisor"]),async function (req
     },
   };
 
+  // check if team already exists
+  const { Items } = await dynamoDbClient.send(
+    new ScanCommand({
+      TableName: TEAM_TABLE,
+      FilterExpression: "teamName = :teamName",
+      ExpressionAttributeValues: {
+        ":teamName": req.body.teamName,
+      },
+    })
+  );
+  if (Items && Items.length > 0) {
+    res.status(409).json({ error: errors.teamAlreadyExists });
+    return;
+  }
+
+  // check if project already exists
+  const { Items: projects } = await dynamoDbClient.send(
+    new ScanCommand({
+      TableName: TEAM_TABLE,
+      FilterExpression: "projectName = :projectName",
+      ExpressionAttributeValues: {
+        ":projectName": req.body.projectName,
+      },
+    })
+  );
+  if (projects && projects.length > 0) {
+    res.status(409).json({ error: errors.projectAlreadyExists });
+    return;
+  }
+
+  // add team if it doesnt exists
+
   try {
-    await dynamoDbClient.send(new PutCommand(params));
+    dynamoDbClient.send(new PutCommand(params));
     res.json({
       message: "Team added successfully",
     });
@@ -1953,62 +1952,7 @@ app.post("/api/users/teams", rolesMiddleware(["supervisor"]),async function (req
   }
 });
 
-// check in from office
-app.post("/api/users/employees/attendance/checkin", async function (req, res) {
-  const params = {
-    TableName: ATTENDANCE_TABLE,
-    Item: {
-      attendanceId: uuidv4(),
-      reqTime: new Date().toUTCString(),
-      ...req.body,
-    },
-  };
-  try {
-    await dynamoDbClient.send(new PutCommand(params));
-    res.json({
-      message: "Attendance added successfully",
-    });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: errors.createUserError });
-  }
-});
 
-app.put(
-  "/api/users/employees/attendance/checkin/:attendanceId",
-  async function (req, res) {
-    const attendanceId = req.params.attendanceId;
-    console.log("attendanceId", attendanceId);
-    const params = {
-      TableName: ATTENDANCE_TABLE,
-      Key: {
-        attendanceId: attendanceId,
-        reqTime: req.body.reqTime,
-      },
-      UpdateExpression: "SET checkIn = :checkIn",
-      ExpressionAttributeValues: {
-        ":checkIn": req.body.checkIn,
-      },
-      ConditionExpression: "attribute_exists(attendanceId)",
-      ReturnValues: "ALL_NEW",
-    };
-    try {
-      await dynamoDbClient.send(new UpdateCommand(params));
-      res.json({ message: "Attendance updated successfully" });
-    } catch (error) {
-      console.error(error);
-      res.status(500).json({ messages: "Failed to update attendance" });
-    }
-  }
-);
-
-
-
-
-
-
-
-// End of Amasha's code
 
 
 
@@ -2040,112 +1984,546 @@ app.get("/api/users/company/employees/:companyId", async function (req, res) {
   res.json(employees);
 });
 
-
-// check in from office
-app.post("/api/users/employees/attendance/checkin", async function (req, res) {
-  const params = {
-    TableName: ATTENDANCE_TABLE,
-    Item: {
-      attendanceId: uuidv4(),
-      reqTime: new Date().toUTCString(),
-      ...req.body,
-    },
-  };
-  try {
-    await dynamoDbClient.send(new PutCommand(params));
-    res.json({
-      message: "Attendance added successfully",
-    });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: errors.createUserError });
-  }
-});
-
+//self edit for employees
 app.put(
-  "/api/users/employees/attendance/checkin/:attendanceId",
+  "/api/users/employee/edit-profile/:employeeId",
   async function (req, res) {
-    const attendanceId = req.params.attendanceId;
-    console.log("attendanceId", attendanceId);
-    const params = {
-      TableName: ATTENDANCE_TABLE,
-      Key: {
-        attendanceId: attendanceId,
-        reqTime: req.body.reqTime,
+    const id = req.params.employeeId;
+
+
+
+
+    // check req body
+    if (!req.body) {
+      res.status(400).json({ error: "Request body is empty" });
+      return;
+    }
+
+
+    // check if email already exists employee table
+
+
+    const emailParams = {
+      TableName: EMPLOYEES_TABLE,
+      FilterExpression: "#email = :email",
+      ExpressionAttributeNames: {
+        "#email": "email",
       },
-      UpdateExpression: "SET checkIn = :checkIn",
       ExpressionAttributeValues: {
-        ":checkIn": req.body.checkIn,
+        ":email": req.body.email,
       },
-      ConditionExpression: "attribute_exists(attendanceId)",
+    };
+    const { Items: employeesEmail } = await dynamoDbClient.send(
+      new ScanCommand(emailParams)
+    );
+    if (employeesEmail.length > 0 && employeesEmail[0].userId !== id) {
+      res.status(400).json({ error: "Email already exists" });
+      return;
+    }
+
+
+    // check if email already exists in admin table
+
+
+    const adminEmailParams = {
+      TableName: ADMINS_TABLE,
+      FilterExpression: "#email = :email",
+      ExpressionAttributeNames: {
+        "#email": "email",
+      },
+      ExpressionAttributeValues: {
+        ":email": req.body.email,
+      },
+    };
+    const { Items: adminsEmail } = await dynamoDbClient.send(
+      new ScanCommand(adminEmailParams)
+    );
+    if (adminsEmail.length > 0 && adminsEmail[0].userId !== id) {
+      res.status(400).json({ error: "Email already exists" });
+      return;
+    }
+
+
+    // check if username already exists employee table
+    const params = {
+      TableName: EMPLOYEES_TABLE,
+      FilterExpression: "#username = :username",
+      ExpressionAttributeNames: {
+        "#username": "username",
+      },
+      ExpressionAttributeValues: {
+        ":username": req.body.username,
+      },
+    };
+    const { Items: employeesUsername } = await dynamoDbClient.send(
+      new ScanCommand(params)
+    );
+    if (employeesUsername.length > 0 && employeesUsername[0].userId !== id) {
+      res.status(400).json({ error: "Username already exists" });
+      return;
+    }
+
+
+    // check if username already exists in admin table
+    const adminParams = {
+      TableName: ADMINS_TABLE,
+      FilterExpression: "#userName = :userName",
+      ExpressionAttributeNames: {
+        "#userName": "userName",
+      },
+      ExpressionAttributeValues: {
+        ":userName": req.body.username,
+      },
+    };
+    const { Items: adminsUsername } = await dynamoDbClient.send(
+      new ScanCommand(adminParams)
+    );
+    if (adminsUsername.length > 0 && adminsUsername[0].userId !== id) {
+      res.status(400).json({ error: "Username already exists" });
+      return;
+    }
+
+
+    // get employee details
+    const employeeDetailsParam = {
+      TableName: EMPLOYEES_TABLE,
+      Key: {
+        userId: id,
+      },
+    };
+    const { Item: employeeDetails } = await dynamoDbClient.send(
+      new GetCommand(employeeDetailsParam)
+    );
+
+
+    if (
+      employeeDetails.password &&
+      req.body.currentPassword &&
+      !(await bcrypt.compare(
+        req.body.currentPassword,
+        employeeDetails.password
+      ))
+    ) {
+      res.status(400).json({ error: "Current password is incorrect" });
+      return;
+    }
+
+
+    if (req.body.currentPassword && req.body.newPassword) {
+      req.body.password = bcrypt.hashSync(req.body.newPassword, 10);
+      req.body.newPassword = null;
+      req.body.currentPassword = null;
+    } else {
+      req.body.password = employeeDetails.password;
+    }
+
+
+    //save image to s3
+    const base64regex =
+      /^([0-9a-zA-Z+/]{4})*(([0-9a-zA-Z+/]{2}==)|([0-9a-zA-Z+/]{3}=))?$/;
+
+
+    if (base64regex.test(req.body.profileImage)) {
+      try {
+        const uploadResult = await uploadImage(req.body.profileImage);
+        req.body.imageUrl = uploadResult.imageUrl;
+        req.body.profileImage = null;
+        console.log(uploadResult);
+      } catch (error) {
+        console.error("Error:", error);
+        res.status(500).json({ error: errors.imageUploadError });
+        return;
+      }
+    } else {
+      req.body.imageUrl = req.body.profileImage;
+      req.body.profileImage = null;
+    }
+
+
+    // update admin details
+
+
+    const updateParams = {
+      TableName: EMPLOYEES_TABLE,
+      Key: {
+        userId: id,
+      },
+      UpdateExpression:
+        "SET firstName = :firstName, lastName = :lastName, email = :email, username = :username, password = :password, imageUrl = :imageUrl, contactNo = :contactNo",
+      ExpressionAttributeValues: {
+        ":firstName": req.body.firstName,
+        ":lastName": req.body.lastName,
+        ":email": req.body.email,
+        ":username": req.body.username,
+        ":password": req.body.password,
+        ":contactNo": req.body.contactNo,
+        ":imageUrl": req.body.imageUrl,
+      },
       ReturnValues: "ALL_NEW",
     };
+
+
     try {
-      await dynamoDbClient.send(new UpdateCommand(params));
-      res.json({ message: "Attendance updated successfully" });
+      const result = await dynamoDbClient.send(new UpdateCommand(updateParams));
+      res.json(result.Attributes);
     } catch (error) {
-      console.error(error);
-      res.status(500).json({ messages: "Failed to update attendance" });
+   
+      res.status(500).json({ error: errors.userUpdateError});
     }
   }
 );
 
-// mark check out from office
+//self edit for admins
 
-// check out
+app.put("/api/users/admin/edit-profile/:adminId", async function (req, res) {
+  const id = req.params.adminId;
 
-app.put(
-  "/api/users/employees/attendance/checkout/:attendanceId",
-  async function (req, res) {
-    const attendanceId = req.params.attendanceId;
-    console.log("attendanceId", attendanceId);
-    const params = {
-      TableName: ATTENDANCE_TABLE,
-      Key: {
-        attendanceId: attendanceId,
-        reqTime: req.body.reqTime,
-      },
-      UpdateExpression: "SET checkOut = :checkOut",
-      ExpressionAttributeValues: {
-        ":checkOut": new Date(req.body.checkOut).toISOString(),
-      },
-      ConditionExpression: "attribute_exists(attendanceId)",
-      ReturnValues: "ALL_NEW",
-    };
+
+  console.log(req.body);
+
+
+  // check req body
+  if (!req.body) {
+    res.status(400).json({ error: "Request body is empty" });
+    return;
+  }
+
+
+  // check if email already exists employee table
+
+
+  const emailParams = {
+    TableName: EMPLOYEES_TABLE,
+    FilterExpression: "#email = :email",
+    ExpressionAttributeNames: {
+      "#email": "email",
+    },
+    ExpressionAttributeValues: {
+      ":email": req.body.email,
+    },
+  };
+  const { Items: employeesEmail } = await dynamoDbClient.send(
+    new ScanCommand(emailParams)
+  );
+  if (employeesEmail.length > 0 && employeesEmail[0].userId !== id) {
+    res.status(400).json({ error: "Email already exists" });
+    return;
+  }
+
+
+  // check if email already exists in admin table
+
+
+  const adminEmailParams = {
+    TableName: ADMINS_TABLE,
+    FilterExpression: "#email = :email",
+    ExpressionAttributeNames: {
+      "#email": "email",
+    },
+    ExpressionAttributeValues: {
+      ":email": req.body.email,
+    },
+  };
+  const { Items: adminsEmail } = await dynamoDbClient.send(
+    new ScanCommand(adminEmailParams)
+  );
+  if (adminsEmail.length > 0 && adminsEmail[0].userId !== id) {
+    res.status(400).json({ error: "Email already exists" });
+    return;
+  }
+
+
+  // check if username already exists employee table
+  const params = {
+    TableName: EMPLOYEES_TABLE,
+    FilterExpression: "#username = :username",
+    ExpressionAttributeNames: {
+      "#username": "username",
+    },
+    ExpressionAttributeValues: {
+      ":username": req.body.username,
+    },
+  };
+  const { Items: employeesUsername } = await dynamoDbClient.send(
+    new ScanCommand(params)
+  );
+  if (employeesUsername.length > 0 && employeesUsername[0].userId !== id) {
+    res.status(400).json({ error: "Username already exists" });
+    return;
+  }
+
+
+  // check if username already exists in admin table
+  const adminParams = {
+    TableName: ADMINS_TABLE,
+    FilterExpression: "#userName = :userName",
+    ExpressionAttributeNames: {
+      "#userName": "userName",
+    },
+    ExpressionAttributeValues: {
+      ":userName": req.body.username,
+    },
+  };
+  const { Items: adminsUsername } = await dynamoDbClient.send(
+    new ScanCommand(adminParams)
+  );
+  if (adminsUsername.length > 0 && adminsUsername[0].userId !== id) {
+    res.status(400).json({ error: "Username already exists" });
+    return;
+  }
+
+
+  // get admin details
+  const adminDetailsParams = {
+    TableName: ADMINS_TABLE,
+    Key: {
+      userId: id,
+    },
+  };
+  const { Item: adminDetails } = await dynamoDbClient.send(
+    new GetCommand(adminDetailsParams)
+  );
+
+
+  if (
+    adminDetails.password &&
+    req.body.currentPassword &&
+    !(await bcrypt.compare(req.body.currentPassword, adminDetails.password))
+  ) {
+    res.status(400).json({ error: "Current password is incorrect" });
+    return;
+  }
+
+
+  if (req.body.currentPassword && req.body.newPassword) {
+    req.body.password = bcrypt.hashSync(req.body.newPassword, 10);
+    req.body.newPassword = null;
+    req.body.currentPassword = null;
+  } else {
+    req.body.password = adminDetails.password;
+  }
+
+
+  //save image to s3
+  const base64regex =
+    /^([0-9a-zA-Z+/]{4})*(([0-9a-zA-Z+/]{2}==)|([0-9a-zA-Z+/]{3}=))?$/;
+
+
+  if (base64regex.test(req.body.profileImage)) {
     try {
-      await dynamoDbClient.send(new UpdateCommand(params));
-      res.json({ message: "Attendance updated successfully" });
+      const uploadResult = await uploadImage(req.body.profileImage);
+      req.body.adminImageUrl = uploadResult.imageUrl;
+      req.body.profileImage = null;
+      console.log(uploadResult);
+    } catch (error) {
+      console.error("Error:", error);
+      res.status(500).json({ error: errors.imageUploadError });
+      return;
+    }
+  } else {
+    req.body.adminImageUrl = req.body.profileImage;
+    req.body.profileImage = null;
+  }
+
+
+  // update admin details
+
+
+  const updateParams = {
+    TableName: ADMINS_TABLE,
+    Key: {
+      userId: id,
+    },
+    UpdateExpression:
+      "SET firstName = :firstName, lastName = :lastName, email = :email, userName = :userName, password = :password, adminImageUrl = :adminImageUrl, contactNo = :contactNo",
+    ExpressionAttributeValues: {
+      ":firstName": req.body.firstName,
+      ":lastName": req.body.lastName,
+      ":email": req.body.email,
+      ":userName": req.body.username,
+      ":password": req.body.password,
+      ":contactNo": req.body.contactNo,
+      ":adminImageUrl": req.body.adminImageUrl,
+    },
+    ReturnValues: "ALL_NEW",
+  };
+
+
+  try {
+    const result = await dynamoDbClient.send(new UpdateCommand(updateParams));
+    res.json(result.Attributes);
+  } catch (error) {
+    res.status(500).json({ error });
+  }
+});
+
+
+app.post(
+  "/api/users/attendance/mark",
+  rolesMiddleware(["hr", "employee"]),
+  async function (req, res) {
+    try {
+      const {
+        employeeId,
+        companyId,
+
+        checkedIn,
+        checkedOut,
+        isWorkFromHome,
+      } = req.body;
+
+      // Validate input data
+      if (
+        !employeeId ||
+        !companyId ||
+        checkedIn === undefined ||
+        checkedOut === undefined ||
+        isWorkFromHome === undefined
+      ) {
+        return res.status(400).json({ error: errors.invalidInputData });
+      }
+
+      // Check if the employee exists
+      const employeeParams = {
+        TableName: EMPLOYEES_TABLE,
+        Key: { userId: employeeId },
+      };
+
+      const { Item: employee } = await dynamoDbClient.send(
+        new GetCommand(employeeParams)
+      );
+
+      if (!employee || employee.companyId !== companyId) {
+        return res.status(404).json({ error: errors.userNotFound });
+      }
+
+      // Fetch existing attendance record for the day
+      const today = new Date().toISOString().split("T")[0];
+      const attendanceId = employeeId + today;
+      const attendanceParams = {
+        TableName: ATTENDANCE_TABLE,
+        Key: { date: today, attendanceId: attendanceId },
+      };
+
+      let { Item: existingAttendance } = await dynamoDbClient.send(
+        new GetCommand(attendanceParams)
+      );
+
+      // If a check-in is marked
+      if (isCheckedIn) {
+        if (existingAttendance && existingAttendance.isCheckedIn) {
+          return res.status(400).json({ error: errors.alreadyCheckedIn });
+        }
+        // If a check-out is not marked yet or the user hasn't checked in yet, create a new record for check-in
+        if (!existingAttendance || !existingAttendance.isCheckedOut) {
+          const checkInRecord = {
+            attendanceId: attendanceId,
+            companyId,
+            date: today,
+            time,
+            isCheckedIn: true,
+            isCheckedOut: false,
+            isWorkFromHome,
+          };
+          await dynamoDbClient.send(
+            new PutCommand({ TableName: ATTENDANCE_TABLE, Item: checkInRecord })
+          );
+          return res.json({ message: messages.checkInMarkedSuccess });
+        }
+      }
+
+      // If a check-out is marked
+      if (isCheckedOut) {
+        if (!existingAttendance || !existingAttendance.isCheckedIn) {
+          return res
+            .status(400)
+            .json({ error: errors.previousCheckInNotFound });
+        }
+        if (existingAttendance.isCheckedOut) {
+          return res.status(400).json({ error: errors.alreadyCheckedOut });
+        }
+        // Update the existing record for check-out
+        existingAttendance.isCheckedOut = true;
+        existingAttendance.time = time;
+        await dynamoDbClient.send(
+          new PutCommand({
+            TableName: ATTENDANCE_TABLE,
+            Item: existingAttendance,
+          })
+        );
+        return res.json({ message: messages.checkOutMarkedSuccess });
+      }
+
+      return res.status(400).json({ error: errors.invalidInputData });
     } catch (error) {
       console.error(error);
-      res.status(500).json({ messages: "Failed to update attendance" });
+      return res.status(500).json({ error: errors.markAttendanceError });
     }
   }
 );
 
 
-// new whf request
+app.get(
+  "/api/users/attendance/checkForTheDay/:employeeId",
+  rolesMiddleware(["hr", "employee"]),
+  async function (req, res) {
+    try {
+      const { employeeId } = req.params;
+      const today = new Date().toISOString().split("T")[0];
+      const attendanceId = employeeId + today;
 
-app.post("/api/users/employees/attendance/request", async function (req, res) {
-  const params = {
-    TableName: ATTENDANCE_TABLE,
-    Item: {
-      attendanceId: uuidv4(),
-      reqTime: new Date().toISOString(),
-      whf: "pending",
-      ...req.body,
-    },
-  };
+      // Fetch existing attendance record for the day
+      const attendanceParams = {
+        TableName: ATTENDANCE_TABLE,
+        Key: { date: today, attendanceId: attendanceId },
+      };
 
-  try {
-    await dynamoDbClient.send(new PutCommand(params));
-    res.json({
-      message: "Attendance added successfully",
-    });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: errors.createUserError });
+      const { Item: existingAttendance } = await dynamoDbClient.send(
+        new GetCommand(attendanceParams)
+      );
+
+      if (!existingAttendance) {
+        return res.status(404).json({ error: errors.attendanceRecordNotFound });
+      }
+
+      return res.json(existingAttendance);
+    } catch (error) {
+      return res.status(500).json({ error: errors.retrieveAttendanceError });
+    }
   }
-});
+);
+
+//get employee workfrom home requests
+app.get(
+  "/api/users/attendance/request/employees/:employeeId",
+  async function (req, res) {
+    employeeId = req.params.employeeId;
+
+    const params = {
+      TableName: ATTENDANCE_TABLE,
+      FilterExpression:
+        "#employeeId = :employeeId AND( #whf = :whf1 OR #whf = :whf2 OR #whf = :whf3) ",
+      ExpressionAttributeNames: {
+        "#employeeId": "employeeId",
+        "#whf": "whf",
+      },
+      ExpressionAttributeValues: {
+        ":employeeId": employeeId,
+        ":whf1": "accepted",
+        ":whf2": "rejected",
+        ":whf3": "pending",
+      },
+    };
+
+    try {
+      const { Items } = await dynamoDbClient.send(new ScanCommand(params));
+      res.json(Items);
+    } catch (error) {
+      res.status(500).json({ error: errors.getAttendanceError });
+      console.error(error);
+    }
+  }
+);
 
 // get all whf requests by companyId
 
@@ -2170,7 +2548,7 @@ app.get("/api/users/attendance/request/:companyId", async function (req, res) {
   const employees = attendance.map((attendance) => attendance.employeeId);
   const uniqueEmployees = [...new Set(employees)];
 
-//get unique employees data from uniqueEmployees array and add to employeesData array
+  //get unique employees data from uniqueEmployees array and add to employeesData array
 
   const getEmployeeData = async (employeeId) => {
     return new Promise((resolve, reject) => {
@@ -2196,8 +2574,6 @@ app.get("/api/users/attendance/request/:companyId", async function (req, res) {
     employeeData.push(employee);
   }
 
-
-  
   // join employee data with attendance data
 
   const finalData = attendance.map((attendance) => {
@@ -2213,10 +2589,181 @@ app.get("/api/users/attendance/request/:companyId", async function (req, res) {
     };
   });
 
+  // const attendanceData = attendance.map((attendance) => {
+  //   const employee = employeeData.find(
+  //     (employee) => employee.userId === attendance.employeeId
+  //   );
+  //   return {
+  //     ...attendance,
+  //     employee,
+  //   };
+  // });
   res.json(finalData);
 });
 
-// Update Employee Attendance Record
+// get latest stage equal to whf or office and requestedDate is today
+app.get(
+  "/api/users/employees/attendance/:employeeId",
+  async function (req, res) {
+    //convert new date into india timezone
+    const newDate = new Date().toLocaleDateString({
+      timeZone: "Asia/Kolkata",
+    });
+
+    const employeeId = req.params.employeeId;
+    const params = {
+      TableName: ATTENDANCE_TABLE,
+      FilterExpression:
+        "#employeeId = :employeeId  AND #whfDate = :whfDate AND (#stage = :stage1 OR #stage = :stage2)",
+      ExpressionAttributeNames: {
+        "#employeeId": "employeeId",
+        "#stage": "stage",
+        "#whfDate": "whfDate",
+      },
+      ExpressionAttributeValues: {
+        ":employeeId": employeeId,
+        ":stage1": "whf",
+        ":stage2": "office",
+        ":whfDate": newDate,
+      },
+    };
+    try {
+      const { Items } = await dynamoDbClient.send(new ScanCommand(params));
+      res.json(Items);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: errors.getAttendanceError });
+    }
+  }
+);
+
+// check in from office
+app.post("/api/users/employees/attendance/checkin", async function (req, res) {
+  const params = {
+    TableName: ATTENDANCE_TABLE,
+    Item: {
+      attendanceId: uuidv4(),
+      reqTime: new Date().toISOString(),
+      whf: "no",
+
+      stage: "checkIn",
+
+      ...req.body,
+    },
+  };
+  try {
+    await dynamoDbClient.send(new PutCommand(params));
+    res.json({
+      message: "Attendance added successfully",
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: errors.createAttendanceError });
+  }
+});
+
+app.put(
+  "/api/users/employees/attendance/checkin/:attendanceId",
+  async function (req, res) {
+    const attendanceId = req.params.attendanceId;
+
+    const params = {
+      TableName: ATTENDANCE_TABLE,
+      Key: {
+        attendanceId: attendanceId,
+        reqTime: req.body.reqTime,
+      },
+      UpdateExpression: "SET checkIn = :checkIn , stage = :stage",
+      ExpressionAttributeValues: {
+        ":checkIn": req.body.checkIn,
+        ":stage": "checkIn",
+      },
+      ConditionExpression: "attribute_exists(attendanceId)",
+      ReturnValues: "ALL_NEW",
+    };
+    try {
+      await dynamoDbClient.send(new UpdateCommand(params));
+      res.json({ message: "Attendance updated successfully" });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ messages: "Failed to update attendance" });
+    }
+  }
+);
+
+app.put(
+  "/api/users/employees/attendance/checkout/:attendanceId",
+  async function (req, res) {
+    const attendanceId = req.params.attendanceId;
+    console.log("attendanceId", attendanceId);
+    const params = {
+      TableName: ATTENDANCE_TABLE,
+      Key: {
+        attendanceId: attendanceId,
+        reqTime: req.body.reqTime,
+      },
+      UpdateExpression: "SET checkOut = :checkOut , stage = :stage",
+      ExpressionAttributeValues: {
+        ":checkOut": new Date(req.body.checkOut).toISOString(),
+        ":stage": "completed",
+      },
+      ConditionExpression: "attribute_exists(attendanceId)",
+      ReturnValues: "ALL_NEW",
+    };
+    try {
+      await dynamoDbClient.send(new UpdateCommand(params));
+      res.json({ message: "Attendance updated successfully" });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ messages: "Failed to update attendance" });
+    }
+  }
+);
+
+app.post("/api/users/employees/attendance/request", async function (req, res) {
+  // check if whfDate already exists
+
+  req.body.whfDate = new Date(req.body.whfDate).toLocaleDateString({
+    timeZone: "Asia/Kolkata",
+  });
+  const { Items: whfDates } = await dynamoDbClient.send(
+    new ScanCommand({
+      TableName: ATTENDANCE_TABLE,
+      FilterExpression: "whfDate = :whfDate AND employeeId = :employeeId",
+      ExpressionAttributeValues: {
+        ":employeeId": req.body.employeeId,
+        ":whfDate": req.body.whfDate,
+      },
+    })
+  );
+  if (whfDates && whfDates.length > 0) {
+    res.status(409).json({ error: errors.whfDateAlreadyExists });
+    return;
+  }
+
+  const params = {
+    TableName: ATTENDANCE_TABLE,
+    Item: {
+      attendanceId: uuidv4(),
+      reqTime: new Date().toISOString(),
+      whf: "pending",
+      stage: "request",
+      ...req.body,
+    },
+  };
+
+  try {
+    await dynamoDbClient.send(new PutCommand(params));
+    res.json({
+      message: "Attendance added successfully",
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: errors.createUserError });
+  }
+});
+
+// put response
 app.put(
   "/api/users/employees/attendance/:attendanceId",
   async function (req, res) {
@@ -2229,10 +2776,11 @@ app.put(
         attendanceId: attendanceId,
         reqTime: req.body.reqTime,
       },
-      UpdateExpression: "SET whf = :whf",
+      UpdateExpression: "SET whf = :whf , stage = :stage",
 
       ExpressionAttributeValues: {
         ":whf": req.body.whf,
+        ":stage": req.body.stage,
       },
       ReturnValues: "ALL_NEW",
     };
@@ -2247,27 +2795,23 @@ app.put(
   }
 );
 
-
-// get latest whf request
+// get latest checkIn by stage
 app.get(
-  "/api/users/employees/attendance/:employeeId",
+  "/api/users/employees/attendance/checkin/:employeeId",
   async function (req, res) {
     const employeeId = req.params.employeeId;
-    console.log("employeeId:", employeeId);
 
     const params = {
       TableName: ATTENDANCE_TABLE,
-
-      FilterExpression: "#employeeId = :employeeId",
-
+      FilterExpression: "#employeeId = :employeeId AND #stage = :stage",
       ExpressionAttributeNames: {
         "#employeeId": "employeeId",
+        "#stage": "stage",
       },
-
       ExpressionAttributeValues: {
         ":employeeId": employeeId,
+        ":stage": "checkIn",
       },
-
       ScanIndexForward: false,
     };
     const { Items: attendance } = await dynamoDbClient.send(
@@ -2318,7 +2862,7 @@ app.get(
         fri: 0,
       };
       attendance.forEach((attendance) => {
-        // if check attendance have checkIn and checkOut
+        // iff check attendance have checkIn and checkOut
         if (attendance.checkIn && attendance.checkOut) {
           const checkIn = new Date(attendance.checkIn);
           const checkOut = new Date(attendance.checkOut);
@@ -2347,6 +2891,8 @@ app.get(
     }
   }
 );
+
+
 
 
 
