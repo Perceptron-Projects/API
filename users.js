@@ -53,44 +53,129 @@ app.use((req, res, next) => {
   }
 });
 
-app.get("/api/users/isWithinRadius/:companyId", rolesMiddleware(["admin","hr","employee"]), async function (req, res) {
-  try {
-    const { userLat, userLon } = req.query;
-    const companyId = req.params.companyId;
+app.get(
+  "/api/users/isWithinRadius/:companyId",
+  rolesMiddleware(["admin", "hr", "employee"]),
+  async function (req, res) {
+    try {
+      const { userLat, userLon, branchId } = req.query;
+      const companyId = req.params.companyId;
 
-    // Validate input data
-    if (!companyId || !userLat || !userLon) {
-      res.status(400).json({ error: errors.invalidInputData });
-      return;
+      // Validate input data
+      if (!companyId || !userLat || !userLon) {
+        res.status(400).json({ error: "Invalid input data" });
+        return;
+      }
+
+      console.log("checking", userLat, userLon, companyId);
+
+      // Fetch company details from the COMPANY_TABLE
+      const companyParams = {
+        TableName: COMPANY_TABLE,
+        Key: {
+          companyId: companyId ,
+        },
+      };
+
+
+      const { Item: company } = await dynamoDbClient.send(
+        new GetCommand(companyParams)
+      );
+
+      console.log("company found", company);
+
+      if (!company) {
+        res.status(404).json({ error: "Company not found" });
+        return;
+      }
+      console.log("company found");
+
+       let companyLat, companyLon, radiusFromCenter;
+
+       if(branchId){
+       const branches = company.branches;
+       let branch = null;
+
+       console.log("branches found", branches);
+
+       // Find the branch with the matching branchId
+       for (const b of branches) {
+         if (b.branchId === branchId) {
+           branch = b;
+           break;
+         }
+       }
+
+       if (branch) {
+         companyLat = parseFloat(branch.location.latitude);
+         companyLon = parseFloat(branch.location.longitude);
+         radiusFromCenter = parseFloat(branch.radiusFromCenterOfBranch);
+       } else {
+         companyLat = parseFloat(company.location.latitude);
+         companyLon = parseFloat(company.location.longitude);
+         radiusFromCenter = parseFloat(company.radiusFromCenterOfCompany);
+       }
+
+       console.log("checking 2222", companyLat, companyLon, radiusFromCenter); 
+      }
+      else{
+        companyLat = parseFloat(company.location.latitude);
+        companyLon = parseFloat(company.location.longitude);
+        radiusFromCenter = parseFloat(company.radiusFromCenterOfCompany);
+      }
+
+      // Check if the user is within the predefined radius
+      const withinRadius = isWithinRadius(
+        parseFloat(userLat),
+        parseFloat(userLon),
+        companyLat,
+        companyLon,
+        radiusFromCenter
+      );
+
+      console.log("withinRadius", withinRadius);
+
+      res.json({ withinRadius });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Error checking user within radius" });
     }
+  }
+);
 
-    // Fetch company details from the COMPANY_TABLE
-    const companyParams = {
-      TableName: COMPANY_TABLE,
-      Key: {
-        companyId: companyId,
+
+//get employee workfrom home requests
+app.get(
+  "/api/users/attendance/request/employees/:employeeId",
+  async function (req, res) {
+    employeeId = req.params.employeeId;
+
+    const params = {
+      TableName: ATTENDANCE_TABLE,
+      FilterExpression:
+        "#employeeId = :employeeId AND( #whf = :whf1 OR #whf = :whf2 OR #whf = :whf3) ",
+      ExpressionAttributeNames: {
+        "#employeeId": "employeeId",
+        "#whf": "whf",
+      },
+      ExpressionAttributeValues: {
+        ":employeeId": employeeId,
+        ":whf1": "accepted",
+        ":whf2": "rejected",
+        ":whf3": "pending",
       },
     };
 
-    const { Item: company } = await dynamoDbClient.send(new GetCommand(companyParams));
-
-    if (!company) {
-      res.status(404).json({ error: errors.adminCompanyInfoNotFound });
-      return;
+    try {
+      const { Items } = await dynamoDbClient.send(new ScanCommand(params));
+      res.json(Items);
+    } catch (error) {
+      res.status(500).json({ error: errors.getAttendanceError });
+      console.error(error);
     }
-
-    // Extract company details
-    const { latitude: companyLat, longitude: companyLon, radiusFromCenterOfCompany } = company;
-
-    // Check if the user is within the predefined radius
-    const withinRadius = isWithinRadius(parseFloat(userLat), parseFloat(userLon), companyLat, companyLon, radiusFromCenterOfCompany);
-
-    res.json({ withinRadius });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: errors.userWithinRadiusError });
   }
-});
+);
+
 
 
 
@@ -525,6 +610,7 @@ app.get("/api/users/admins/all", rolesMiddleware(["superadmin"]), async function
 });
 
 app.get("/api/users/admins/:id", rolesMiddleware(["superadmin","admin","branchadmin"]), async function (req, res) {
+
   try {
     const adminId = req.params.id;
     const adminParams = {
@@ -655,6 +741,52 @@ app.delete("/api/users/company/:id", rolesMiddleware(["superadmin"]), async func
 
     await dynamoDbClient.send(new DeleteCommand(companyParams));
 
+    //delete employees and admins of company also
+    const employeeParams = {
+      TableName: EMPLOYEES_TABLE,
+      FilterExpression: "#companyId = :companyId",
+      ExpressionAttributeNames: {
+        "#companyId": "companyId",
+      },
+      ExpressionAttributeValues: {
+        ":companyId": companyId
+      },
+    };
+
+    const adminParams = {
+      TableName: ADMINS_TABLE,
+      FilterExpression: "#companyId = :companyId",
+      ExpressionAttributeNames: {
+        "#companyId": "companyId",
+      },
+      ExpressionAttributeValues: {
+        ":companyId": companyId
+      },
+    };
+
+    const { Items: employees } = await dynamoDbClient.send(new ScanCommand(employeeParams));
+    const { Items: admins } = await dynamoDbClient.send(new ScanCommand(adminParams));
+
+    for (const employee of employees) {
+      const employeeParams = {
+        TableName: EMPLOYEES_TABLE,
+        Key: {
+          userId: employee.userId,
+        },
+      };
+      await dynamoDbClient.send(new DeleteCommand(employeeParams));
+    }
+
+    for (const admin of admins) {
+      const adminParams = {
+        TableName: ADMINS_TABLE,
+        Key: {
+          userId: admin.userId,
+        },
+      };
+      await dynamoDbClient.send(new DeleteCommand(adminParams));
+    }
+
     res.json({ message: "Company deleted successfully" });
   } catch (error) {
     console.log(error);
@@ -662,6 +794,7 @@ app.delete("/api/users/company/:id", rolesMiddleware(["superadmin"]), async func
   }
 }
 );
+
 
 app.get("/api/users/companies/all", rolesMiddleware(["superadmin"]), async function (req, res) {
   
@@ -1798,6 +1931,8 @@ app.delete("/api/users/team/:teamId", async function (req, res) {
 });
 
 
+
+
 // update team
 
 app.put("/api/users/team/:teamId", async function (req, res) {
@@ -1886,7 +2021,6 @@ app.put("/api/users/team/:teamId", async function (req, res) {
   }
 });
 
-
 // add new team
 
 app.post("/api/users/teams", async function (req, res) {
@@ -1939,7 +2073,7 @@ app.post("/api/users/teams", async function (req, res) {
     return;
   }
 
-  // add team if it doesnt exists
+  // add team
 
   try {
     dynamoDbClient.send(new PutCommand(params));
@@ -1949,12 +2083,92 @@ app.post("/api/users/teams", async function (req, res) {
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: errors.createUserError });
+
+  }
+
+// check in from office
+app.post("/api/users/employees/attendance/checkin", async function (req, res) {
+  const params = {
+    TableName: ATTENDANCE_TABLE,
+    Item: {
+      attendanceId: uuidv4(),
+      reqTime: new Date().toISOString(),
+      whf: "no",
+
+      stage: "checkIn",
+
+      ...req.body,
+    },
+  };
+
+  try {
+    dynamoDbClient.send(new PutCommand(params));
+    res.json({
+      message: "Team added successfully",
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: errors.createAttendanceError });
   }
 });
 
+app.put(
+  "/api/users/employees/attendance/checkin/:attendanceId",
+  async function (req, res) {
+    const attendanceId = req.params.attendanceId;
+
+    const params = {
+      TableName: ATTENDANCE_TABLE,
+      Key: {
+        attendanceId: attendanceId,
+        reqTime: req.body.reqTime,
+      },
+      UpdateExpression: "SET checkIn = :checkIn , stage = :stage",
+      ExpressionAttributeValues: {
+        ":checkIn": req.body.checkIn,
+        ":stage": "checkIn",
+      },
+      ConditionExpression: "attribute_exists(attendanceId)",
+      ReturnValues: "ALL_NEW",
+    };
+    try {
+      await dynamoDbClient.send(new UpdateCommand(params));
+      res.json({ message: "Attendance updated successfully" });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ messages: "Failed to update attendance" });
+    }
+  }
+);
 
 
+app.get("/api/users/teams/employee/:employeeId", async function (req, res) {
+  const employeeId = req.params.employeeId;
 
+  if (!employeeId) {
+    res.status(400).json({ error: errors.invalidEmployeeId });
+    return;
+  }
+
+  // scan employee from teamMembers array to get teamId
+  const params = {
+    TableName: TEAM_TABLE,
+  };
+  try {
+    const { Items } = await dynamoDbClient.send(new ScanCommand(params));
+
+    // filter teams by employeeId
+    const finalizedItems = Items.filter((item) =>
+      item.teamMembers.some((member) => member.id === employeeId)
+    );
+
+
+    res.json(finalizedItems);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: errors.getTeamsError });
+  }
+});
 
 
 //get employees by company id
@@ -1983,76 +2197,16 @@ app.get("/api/users/company/employees/:companyId", async function (req, res) {
   );
   res.json(employees);
 });
-
-//self edit for employees
-app.put(
-  "/api/users/employee/edit-profile/:employeeId",
-  async function (req, res) {
-    const id = req.params.employeeId;
-
-
-
-
-    // check req body
-    if (!req.body) {
-      res.status(400).json({ error: "Request body is empty" });
-      return;
-    }
-
-
-    // check if email already exists employee table
-
-
-    const emailParams = {
-      TableName: EMPLOYEES_TABLE,
-      FilterExpression: "#email = :email",
-      ExpressionAttributeNames: {
-        "#email": "email",
-      },
-      ExpressionAttributeValues: {
-        ":email": req.body.email,
-      },
-    };
-    const { Items: employeesEmail } = await dynamoDbClient.send(
-      new ScanCommand(emailParams)
-    );
-    if (employeesEmail.length > 0 && employeesEmail[0].userId !== id) {
-      res.status(400).json({ error: "Email already exists" });
-      return;
-    }
-
-
-    // check if email already exists in admin table
-
-
-    const adminEmailParams = {
-      TableName: ADMINS_TABLE,
-      FilterExpression: "#email = :email",
-      ExpressionAttributeNames: {
-        "#email": "email",
-      },
-      ExpressionAttributeValues: {
-        ":email": req.body.email,
-      },
-    };
-    const { Items: adminsEmail } = await dynamoDbClient.send(
-      new ScanCommand(adminEmailParams)
-    );
-    if (adminsEmail.length > 0 && adminsEmail[0].userId !== id) {
-      res.status(400).json({ error: "Email already exists" });
-      return;
-    }
-
-
-    // check if username already exists employee table
     const params = {
       TableName: EMPLOYEES_TABLE,
       FilterExpression: "#username = :username",
       ExpressionAttributeNames: {
         "#username": "username",
       },
+      
       ExpressionAttributeValues: {
         ":username": req.body.username,
+
       },
     };
     const { Items: employeesUsername } = await dynamoDbClient.send(
@@ -2082,7 +2236,6 @@ app.put(
       res.status(400).json({ error: "Username already exists" });
       return;
     }
-
 
     // get employee details
     const employeeDetailsParam = {
@@ -2827,6 +2980,7 @@ app.get(
 );
 
 // get attendance by employee id by between start date and end date and current year
+
 app.get(
   "/api/users/employees/attendance/:employeeId/:startDate/:endDate",
   async function (req, res) {
@@ -2891,6 +3045,417 @@ app.get(
     }
   }
 );
+
+
+// get latest stage equal to whf or office and requestedDate is today
+app.get(
+  "/api/users/employees/attendance/:employeeId",
+  async function (req, res) {
+    //convert new date into india timezone
+    const newDate = new Date().toLocaleDateString({
+      timeZone: "Asia/Kolkata",
+    });
+
+    const employeeId = req.params.employeeId;
+    const params = {
+      TableName: ATTENDANCE_TABLE,
+      FilterExpression:
+        "#employeeId = :employeeId  AND #whfDate = :whfDate AND (#stage = :stage1 OR #stage = :stage2)",
+      ExpressionAttributeNames: {
+        "#employeeId": "employeeId",
+        "#stage": "stage",
+        "#whfDate": "whfDate",
+      },
+      ExpressionAttributeValues: {
+        ":employeeId": employeeId,
+        ":stage1": "whf",
+        ":stage2": "office",
+        ":whfDate": newDate,
+      },
+    };
+    try {
+      const { Items } = await dynamoDbClient.send(new ScanCommand(params));
+      res.json(Items);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: errors.getAttendanceError });
+    }
+  }
+);
+
+//self edit profile for employees
+
+app.put(
+  "/api/users/employee/edit-profile/:employeeId",
+  async function (req, res) {
+    const id = req.params.employeeId;
+
+
+
+
+    // check req body
+    if (!req.body) {
+      res.status(400).json({ error: "Request body is empty" });
+      return;
+    }
+
+
+    // check if email already exists employee table
+
+
+    const emailParams = {
+      TableName: EMPLOYEES_TABLE,
+      FilterExpression: "#email = :email",
+      ExpressionAttributeNames: {
+        "#email": "email",
+      },
+      ExpressionAttributeValues: {
+        ":email": req.body.email,
+      },
+    };
+    const { Items: employeesEmail } = await dynamoDbClient.send(
+      new ScanCommand(emailParams)
+    );
+    if (employeesEmail.length > 0 && employeesEmail[0].userId !== id) {
+      res.status(400).json({ error: "Email already exists" });
+      return;
+    }
+
+
+    // check if email already exists in admin table
+
+
+    const adminEmailParams = {
+      TableName: ADMINS_TABLE,
+      FilterExpression: "#email = :email",
+      ExpressionAttributeNames: {
+        "#email": "email",
+      },
+      ExpressionAttributeValues: {
+        ":email": req.body.email,
+      },
+    };
+    const { Items: adminsEmail } = await dynamoDbClient.send(
+      new ScanCommand(adminEmailParams)
+    );
+    if (adminsEmail.length > 0 && adminsEmail[0].userId !== id) {
+      res.status(400).json({ error: "Email already exists" });
+      return;
+    }
+
+
+    // check if username already exists employee table
+    const params = {
+      TableName: EMPLOYEES_TABLE,
+      FilterExpression: "#username = :username",
+      ExpressionAttributeNames: {
+        "#username": "username",
+      },
+      ExpressionAttributeValues: {
+        ":username": req.body.username,
+      },
+    };
+    const { Items: employeesUsername } = await dynamoDbClient.send(
+      new ScanCommand(params)
+    );
+    if (employeesUsername.length > 0 && employeesUsername[0].userId !== id) {
+      res.status(400).json({ error: "Username already exists" });
+      return;
+    }
+
+
+    // check if username already exists in admin table
+    const adminParams = {
+      TableName: ADMINS_TABLE,
+      FilterExpression: "#userName = :userName",
+      ExpressionAttributeNames: {
+        "#userName": "userName",
+      },
+      ExpressionAttributeValues: {
+        ":userName": req.body.username,
+      },
+    };
+    const { Items: adminsUsername } = await dynamoDbClient.send(
+      new ScanCommand(adminParams)
+    );
+    if (adminsUsername.length > 0 && adminsUsername[0].userId !== id) {
+      res.status(400).json({ error: "Username already exists" });
+      return;
+    }
+
+
+    // get employee details
+    const employeeDetailsParam = {
+      TableName: EMPLOYEES_TABLE,
+      Key: {
+        userId: id,
+      },
+    };
+    const { Item: employeeDetails } = await dynamoDbClient.send(
+      new GetCommand(employeeDetailsParam)
+    );
+
+
+    if (
+      employeeDetails.password &&
+      req.body.currentPassword &&
+      !(await bcrypt.compare(
+        req.body.currentPassword,
+        employeeDetails.password
+      ))
+    ) {
+      res.status(400).json({ error: "Current password is incorrect" });
+      return;
+    }
+
+
+    if (req.body.currentPassword && req.body.newPassword) {
+      req.body.password = bcrypt.hashSync(req.body.newPassword, 10);
+      req.body.newPassword = null;
+      req.body.currentPassword = null;
+    } else {
+      req.body.password = employeeDetails.password;
+    }
+
+
+    //save image to s3
+    const base64regex =
+      /^([0-9a-zA-Z+/]{4})*(([0-9a-zA-Z+/]{2}==)|([0-9a-zA-Z+/]{3}=))?$/;
+
+
+    if (base64regex.test(req.body.profileImage)) {
+      try {
+        const uploadResult = await uploadImage(req.body.profileImage);
+        req.body.imageUrl = uploadResult.imageUrl;
+        req.body.profileImage = null;
+        console.log(uploadResult);
+      } catch (error) {
+        console.error("Error:", error);
+        res.status(500).json({ error: errors.imageUploadError });
+        return;
+      }
+    } else {
+      req.body.imageUrl = req.body.profileImage;
+      req.body.profileImage = null;
+    }
+
+
+    // update admin details
+
+
+    const updateParams = {
+      TableName: EMPLOYEES_TABLE,
+      Key: {
+        userId: id,
+      },
+      UpdateExpression:
+        "SET firstName = :firstName, lastName = :lastName, email = :email, username = :username, password = :password, imageUrl = :imageUrl, contactNo = :contactNo",
+      ExpressionAttributeValues: {
+        ":firstName": req.body.firstName,
+        ":lastName": req.body.lastName,
+        ":email": req.body.email,
+        ":username": req.body.username,
+        ":password": req.body.password,
+        ":contactNo": req.body.contactNo,
+        ":imageUrl": req.body.imageUrl,
+      },
+      ReturnValues: "ALL_NEW",
+    };
+
+
+    try {
+      const result = await dynamoDbClient.send(new UpdateCommand(updateParams));
+      res.json(result.Attributes);
+    } catch (error) {
+   
+      res.status(500).json({ error: "Could not update employee" });
+    }
+  }
+);
+
+//self profile edit for admins
+
+app.put("/api/users/admin/edit-profile/:adminId", async function (req, res) {
+  const id = req.params.adminId;
+
+
+  console.log(req.body);
+
+
+  // check req body
+  if (!req.body) {
+    res.status(400).json({ error: "Request body is empty" });
+    return;
+  }
+
+
+  // check if email already exists employee table
+
+
+  const emailParams = {
+    TableName: EMPLOYEES_TABLE,
+    FilterExpression: "#email = :email",
+    ExpressionAttributeNames: {
+      "#email": "email",
+    },
+    ExpressionAttributeValues: {
+      ":email": req.body.email,
+    },
+  };
+  const { Items: employeesEmail } = await dynamoDbClient.send(
+    new ScanCommand(emailParams)
+  );
+  if (employeesEmail.length > 0 && employeesEmail[0].userId !== id) {
+    res.status(400).json({ error: "Email already exists" });
+    return;
+  }
+
+
+  // check if email already exists in admin table
+
+
+  const adminEmailParams = {
+    TableName: ADMINS_TABLE,
+    FilterExpression: "#email = :email",
+    ExpressionAttributeNames: {
+      "#email": "email",
+    },
+    ExpressionAttributeValues: {
+      ":email": req.body.email,
+    },
+  };
+  const { Items: adminsEmail } = await dynamoDbClient.send(
+    new ScanCommand(adminEmailParams)
+  );
+  if (adminsEmail.length > 0 && adminsEmail[0].userId !== id) {
+    res.status(400).json({ error: "Email already exists" });
+    return;
+  }
+
+
+  // check if username already exists employee table
+  const params = {
+    TableName: EMPLOYEES_TABLE,
+    FilterExpression: "#username = :username",
+    ExpressionAttributeNames: {
+      "#username": "username",
+    },
+    ExpressionAttributeValues: {
+      ":username": req.body.username,
+    },
+  };
+  const { Items: employeesUsername } = await dynamoDbClient.send(
+    new ScanCommand(params)
+  );
+  if (employeesUsername.length > 0 && employeesUsername[0].userId !== id) {
+    res.status(400).json({ error: "Username already exists" });
+    return;
+  }
+
+
+  // check if username already exists in admin table
+  const adminParams = {
+    TableName: ADMINS_TABLE,
+    FilterExpression: "#userName = :userName",
+    ExpressionAttributeNames: {
+      "#userName": "userName",
+    },
+    ExpressionAttributeValues: {
+      ":userName": req.body.username,
+    },
+  };
+  const { Items: adminsUsername } = await dynamoDbClient.send(
+    new ScanCommand(adminParams)
+  );
+  if (adminsUsername.length > 0 && adminsUsername[0].userId !== id) {
+    res.status(400).json({ error: "Username already exists" });
+    return;
+  }
+
+
+  // get admin details
+  const adminDetailsParams = {
+    TableName: ADMINS_TABLE,
+    Key: {
+      userId: id,
+    },
+  };
+  const { Item: adminDetails } = await dynamoDbClient.send(
+    new GetCommand(adminDetailsParams)
+  );
+
+
+  if (
+    adminDetails.password &&
+    req.body.currentPassword &&
+    !(await bcrypt.compare(req.body.currentPassword, adminDetails.password))
+  ) {
+    res.status(400).json({ error: "Current password is incorrect" });
+    return;
+  }
+
+
+  if (req.body.currentPassword && req.body.newPassword) {
+    req.body.password = bcrypt.hashSync(req.body.newPassword, 10);
+    req.body.newPassword = null;
+    req.body.currentPassword = null;
+  } else {
+    req.body.password = adminDetails.password;
+  }
+
+
+  //save image to s3
+  const base64regex =
+    /^([0-9a-zA-Z+/]{4})*(([0-9a-zA-Z+/]{2}==)|([0-9a-zA-Z+/]{3}=))?$/;
+
+
+  if (base64regex.test(req.body.profileImage)) {
+    try {
+      const uploadResult = await uploadImage(req.body.profileImage);
+      req.body.adminImageUrl = uploadResult.imageUrl;
+      req.body.profileImage = null;
+      console.log(uploadResult);
+    } catch (error) {
+      console.error("Error:", error);
+      res.status(500).json({ error: errors.imageUploadError });
+      return;
+    }
+  } else {
+    req.body.adminImageUrl = req.body.profileImage;
+    req.body.profileImage = null;
+  }
+
+
+  // update admin details
+
+
+  const updateParams = {
+    TableName: ADMINS_TABLE,
+    Key: {
+      userId: id,
+    },
+    UpdateExpression:
+      "SET firstName = :firstName, lastName = :lastName, email = :email, userName = :userName, password = :password, adminImageUrl = :adminImageUrl, contactNo = :contactNo",
+    ExpressionAttributeValues: {
+      ":firstName": req.body.firstName,
+      ":lastName": req.body.lastName,
+      ":email": req.body.email,
+      ":userName": req.body.username,
+      ":password": req.body.password,
+      ":contactNo": req.body.contactNo,
+      ":adminImageUrl": req.body.adminImageUrl,
+    },
+    ReturnValues: "ALL_NEW",
+  };
+
+
+  try {
+    const result = await dynamoDbClient.send(new UpdateCommand(updateParams));
+    res.json(result.Attributes);
+  } catch (error) {
+    res.status(500).json({ error });
+  }
+});
 
 
 
