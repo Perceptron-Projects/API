@@ -969,8 +969,6 @@ app.post("/api/users/create-user", rolesMiddleware(["admin", "hr", "branchadmin"
         branchId: branchId,
         imageUrl: imageUrl,
         branchName: branchName,
-        permissions: permissions || [],
-        ...otherDetails
       },
     };
 
@@ -995,8 +993,6 @@ app.post("/api/users/create-user", rolesMiddleware(["admin", "hr", "branchadmin"
         branchId,
         imageUrl,
         branchName,
-        permissions,
-        ...otherDetails
       }
     });
 
