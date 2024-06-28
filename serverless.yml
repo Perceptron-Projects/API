@@ -1,0 +1,205 @@
+service: AMS-Project
+
+plugins:
+  - serverless-offline
+
+provider:
+  name: aws
+  runtime: nodejs18.x
+  region: us-east-1
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - dynamodb:Query
+            - dynamodb:Scan
+            - dynamodb:GetItem
+            - dynamodb:PutItem
+            - dynamodb:UpdateItem
+            - dynamodb:DeleteItem
+            - s3:CreateBucket
+            - s3:PutObject
+            - s3:GetObject
+            - s3:ListObjects
+            - s3:DeleteObject
+          Resource:
+            - Fn::GetAtt: [ AdminsTable, Arn ]
+            - Fn::GetAtt: [ EmployeesTable, Arn ]
+            - Fn::GetAtt: [ HolidayCalendar, Arn ]
+            - Fn::GetAtt: [ LeavesCalendar, Arn ]
+            - Fn::GetAtt: [ CompanyTable, Arn ]
+            - Fn::GetAtt: [ TeamTable, Arn ]
+            - Fn::GetAtt: [ AttendanceTable, Arn ]
+            - Fn::Sub: arn:aws:s3:::${self:custom.imagesBucketName}
+            - Fn::Sub: arn:aws:s3:::${self:custom.imagesBucketName}/*
+
+        - Effect: Allow
+          Action:
+            - s3:Put*
+            - s3:Get*
+            - s3:List*
+            - s3:Delete*
+          Resource:
+            - arn:aws:s3:::${self:custom.imagesBucketName}/*
+            - arn:aws:s3:::${self:custom.imagesBucketName}
+
+        - Effect: Allow
+          Action: s3:ListAllMyBuckets
+          Resource: "*"
+
+  environment:
+    EMPLOYEES_TABLE: ${self:custom.employeesTableName}
+    ADMINS_TABLE: ${self:custom.adminsTableName}
+    HOLIDAY_CALENDAR_TABLE: ${self:custom.holidayCalendarTableName}
+    LEAVES_CALENDAR_TABLE: ${self:custom.leavesCalendarTableName}
+    COMPANY_TABLE: ${self:custom.companyTableName}
+    TEAM_TABLE: ${self:custom.teamTableName}
+    ATTENDANCE_TABLE: ${self:custom.attendanceTableName}
+    IMAGES_BUCKET_NAME: ${self:custom.imagesBucketName}
+
+functions:
+  users:
+    handler: users.handler
+    timeout: 900
+    events:
+      - httpApi:
+          path: /api/users/{proxy+}
+          method: ANY
+
+  calendar:
+    handler: calendar.handler
+    events:
+      - httpApi:
+          path: /api/calendar/{proxy+}
+          method: ANY
+
+custom:
+  adminsTableName: admins
+  employeesTableName: employees
+  holidayCalendarTableName: holidayCalenders
+  leavesCalendarTableName: leavesCalenders
+  companyTableName: company
+  teamTableName: teams
+  attendanceTableName: attendances
+  imagesBucketName: uom-fit-ams-images-bucket
+
+resources:
+  Resources:
+    AdminsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        AttributeDefinitions:
+          - AttributeName: userId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: userId
+            KeyType: HASH
+        BillingMode: PAY_PER_REQUEST
+        TableName: ${self:custom.adminsTableName}
+
+    EmployeesTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        AttributeDefinitions:
+          - AttributeName: userId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: userId
+            KeyType: HASH
+        BillingMode: PAY_PER_REQUEST
+        TableName: ${self:custom.employeesTableName}
+
+    HolidayCalendar:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        AttributeDefinitions:
+          - AttributeName: Day
+            AttributeType: S
+        KeySchema:
+          - AttributeName: Day
+            KeyType: HASH
+        BillingMode: PAY_PER_REQUEST
+        TableName: ${self:custom.holidayCalendarTableName}
+
+    LeavesCalendar:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        AttributeDefinitions:
+          - AttributeName: leaveId
+            AttributeType: S
+          - AttributeName: createdAt
+            AttributeType: S
+        KeySchema:
+          - AttributeName: leaveId
+            KeyType: HASH
+          - AttributeName: createdAt
+            KeyType: RANGE
+        BillingMode: PAY_PER_REQUEST
+        TableName: ${self:custom.leavesCalendarTableName}
+
+    CompanyTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        AttributeDefinitions:
+          - AttributeName: companyId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: companyId
+            KeyType: HASH
+        BillingMode: PAY_PER_REQUEST
+        TableName: ${self:custom.companyTableName}
+
+    TeamTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        AttributeDefinitions:
+          - AttributeName: teamId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: teamId
+            KeyType: HASH
+        BillingMode: PAY_PER_REQUEST
+        TableName: ${self:custom.teamTableName}
+
+    AttendanceTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        AttributeDefinitions:
+          - AttributeName: attendanceId
+            AttributeType: S
+          - AttributeName: reqTime
+            AttributeType: S
+        KeySchema:
+          - AttributeName: attendanceId
+            KeyType: HASH
+          - AttributeName: reqTime
+            KeyType: RANGE
+        BillingMode: PAY_PER_REQUEST
+        TableName: ${self:custom.attendanceTableName}
+
+    ImagesBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${self:custom.imagesBucketName}
+        PublicAccessBlockConfiguration:
+          BlockPublicAcls: false
+          BlockPublicPolicy: false
+          IgnorePublicAcls: false
+          RestrictPublicBuckets: false
+        OwnershipControls:
+          Rules:
+            - ObjectOwnership: BucketOwnerPreferred
+
+        CorsConfiguration:
+          CorsRules:
+            - AllowedOrigins:
+                - "*"
+              AllowedHeaders:
+                - "*"
+              AllowedMethods:
+                - GET
+                - PUT
+                - POST
+                - DELETE
+              MaxAge: 3000
