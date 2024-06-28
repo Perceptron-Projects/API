@@ -1,5 +1,6 @@
 require('dotenv').config();
 const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
+const AWS = require('aws-sdk');
 const {
   DynamoDBDocumentClient,
   GetCommand,
@@ -40,10 +41,12 @@ const LEAVES_CALENDAR_TABLE = process.env.LEAVES_CALENDAR_TABLE;
 
 const client = new DynamoDBClient();
 const dynamoDbClient = DynamoDBDocumentClient.from(client);
+const ses = new AWS.SES({ region: 'us-east-1' });
 
 app.use(cors());
 
 app.use(express.json({ limit: "50mb" }));
+
 
 app.use((req, res, next) => {
   if (req.path !== "/api/users/login") {
@@ -907,11 +910,11 @@ app.get("/api/users/companies/all", rolesMiddleware(["superadmin"]), async funct
 });
 
 
-app.post("/api/users/create-user", rolesMiddleware(["admin", "branchadmin"]), async function (req, res) {
-    const { companyId, contactNo, dateOfBirth, designation, branchName, email, joiningDate, firstName, lastName, username, branchId } = req.body;
+app.post("/api/users/create-user", rolesMiddleware(["admin","branchadmin"]), async function (req, res) {
+  const { companyId, contactNo, dateOfBirth, designation, branchName, email, joiningDate, firstName, lastName, username, branchId, role } = req.body;
 
-    // Validate input data
-    if (
+  // Validate input data
+  if (
         typeof companyId !== "string" ||
         typeof contactNo !== "string" ||
         typeof dateOfBirth !== "string" ||
@@ -928,66 +931,121 @@ app.post("/api/users/create-user", rolesMiddleware(["admin", "branchadmin"]), as
         return;
     }
 
-    let imageUrl = '';
-
-    if (req.body.image) {
-        try {
-            // Await the result of the uploadImage function
-            const uploadResult = await uploadImage(req.body.image);
-            imageUrl = uploadResult.imageUrl;
-        } catch (error) {
-            console.error("Error:", error);
-            res.status(500).json({ error: errors.imageUploadError });
-            return;
-        }
-    }
-
-    const userId =  "EMP-" +generateUniqueUserId();
-
-    const password = bcrypt.hashSync("employee123", 10);
-
-    const params = {
-        TableName: EMPLOYEES_TABLE,
-        Item: {
-            userId: userId,
-            companyId: companyId,
-            contactNo: contactNo,
-            dateOfBirth: dateOfBirth,
-            role: designation,
-            email: email,
-            joiningDate: joiningDate,
-            firstName: firstName,
-            lastName: lastName,
-            username: username,
-            password: password,
-            branchId: branchId,
-            imageUrl: imageUrl || urls.employeeDefaultImage,
-            branchName: branchName,
-        },
+  try {
+    // Check if email already exists
+    const checkEmailParams = {
+      TableName: EMPLOYEES_TABLE,
+      FilterExpression: 'email = :email',
+      ExpressionAttributeValues: {
+        ':email': email,
+      },
     };
 
-    try {
-        await dynamoDbClient.send(new PutCommand(params));
-        res.json({
-            userId,
-            companyId,
-            contactNo,
-            dateOfBirth,
-            role: designation,
-            email,
-            joiningDate,
-            firstName,
-            lastName,
-            username,
-            branchId,
-            imageUrl,
-            branchName,
-        });
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: errors.createUserError });
+    const { Items } = await dynamoDbClient.send(new ScanCommand(checkEmailParams));
+
+    if (Items.length > 0) {
+      return res.status(400).json({ message: 'User with the provided email already exists' });
     }
+
+    // Upload image if provided
+    let imageUrl = '';
+    if (req.body.image) {
+      try {
+        const uploadResult = await uploadImage(req.body.image);
+        imageUrl = uploadResult.imageUrl;
+      } catch (error) {
+        console.error("Image upload error:", error);
+        return res.status(500).json({ error: "Image upload error" });
+      }
+    } else {
+      imageUrl = urls.employeeDefaultImage;
+    }
+
+    // Create user
+    const userId = "EMP-" + uuidv4();
+    const temporaryPassword = generateTemporaryPassword();
+    const hashedPassword = bcrypt.hashSync(temporaryPassword, 10);
+
+    const params = {
+      TableName: EMPLOYEES_TABLE,
+      Item: {
+        userId: userId,
+        companyId: companyId,
+        contactNo: contactNo,
+        dateOfBirth: dateOfBirth,
+        role: designation,
+        email: email,
+        joiningDate: joiningDate,
+        firstName: firstName,
+        lastName: lastName,
+        username: username,
+        password: hashedPassword,
+        branchId: branchId,
+        imageUrl: imageUrl || urls.employeeDefaultImage,
+        branchName: branchName,
+      },
+    };
+
+    await dynamoDbClient.send(new PutCommand(params));
+
+    // Send email with temporary password
+    await sendEmail(email, firstName, temporaryPassword);
+
+    res.json({
+      message: "User created successfully",
+      user: {
+        userId,
+        companyId,
+        contactNo,
+        dateOfBirth,
+        role: designation,
+        email,
+        joiningDate,
+        firstName,
+        lastName,
+        username,
+        branchId,
+        imageUrl,
+        branchName,
+      }
+    });
+
+  } catch (error) {
+    console.error("Error creating user:", error);
+    res.status(500).json({ error: errors.createUserError });
+  }
 });
+
+function generateTemporaryPassword(length = 6) {
+  const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%";
+  let password = "";
+  for (let i = 0; i < length; i++) {
+      const randomIndex = Math.floor(Math.random() * charset.length);
+      password += charset[randomIndex];
+  }
+  return password;
+}
+
+async function sendEmail(email, firstName, temporaryPassword) {
+  const params = {
+      Source: 'amsemailprovider@gmail.com', 
+      Destination: { ToAddresses: [email] },
+      Message: {
+          Subject: { Data: 'SyncIn - Your Temporary Password' },
+          Body: {
+              Text: { Data: `Hello ${firstName},\n\nYour Email : ${email}\nYour temporary password is: ${temporaryPassword}\nPlease change it upon your first login.\n\nBest regards,\nSyncIn Team` }
+          }
+      }
+  };
+
+  try {
+      const sendPromise = await ses.sendEmail(params).promise();
+      console.log(sendPromise);
+  } catch (error) {
+      console.error("Email not sent:", error);
+      throw error; 
+  }
+}
 
 app.get("/api/users/check-email/:email/:id", rolesMiddleware(["superadmin", "admin", "branchadmin", "hr", "employee"]), async function (req, res) {
   const email = req.params.email;
@@ -3145,8 +3203,6 @@ app.put(
     }
   }
 );
-
-   
 
 
 module.exports.handler = serverless(app);
