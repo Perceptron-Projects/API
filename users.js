@@ -911,12 +911,25 @@ app.get("/api/users/companies/all", rolesMiddleware(["superadmin"]), async funct
 
 
 app.post("/api/users/create-user", rolesMiddleware(["admin","branchadmin"]), async function (req, res) {
-  const { companyId, contactNo, dateOfBirth, designation, branchName, email, joiningDate, firstName, lastName, username, branchId, role, permissions, ...otherDetails } = req.body;
+  const { companyId, contactNo, dateOfBirth, designation, branchName, email, joiningDate, firstName, lastName, username, branchId, role } = req.body;
 
   // Validate input data
-  if (!companyId || !contactNo || !dateOfBirth || !designation || !email || !joiningDate || !firstName || !lastName || !username || !branchId || !branchName) {
-    return res.status(400).json({ error: "Invalid input data" });
-  }
+  if (
+        typeof companyId !== "string" ||
+        typeof contactNo !== "string" ||
+        typeof dateOfBirth !== "string" ||
+        typeof designation !== "string" ||
+        typeof email !== "string" ||
+        typeof joiningDate !== "string" ||
+        typeof firstName !== "string" ||
+        typeof lastName !== "string" ||
+        typeof username !== "string" ||
+        typeof branchId !== "string" ||
+        typeof branchName !== "string"
+    ) {
+        res.status(400).json({ error: errors.invalidInputData });
+        return;
+    }
 
   try {
     // Check if email already exists
@@ -960,7 +973,7 @@ app.post("/api/users/create-user", rolesMiddleware(["admin","branchadmin"]), asy
         companyId: companyId,
         contactNo: contactNo,
         dateOfBirth: dateOfBirth,
-        role: role || designation || "employee",
+        role: designation,
         email: email,
         joiningDate: joiningDate,
         firstName: firstName,
@@ -968,7 +981,7 @@ app.post("/api/users/create-user", rolesMiddleware(["admin","branchadmin"]), asy
         username: username,
         password: hashedPassword,
         branchId: branchId,
-        imageUrl: imageUrl,
+        imageUrl: imageUrl || urls.employeeDefaultImage,
         branchName: branchName,
       },
     };
@@ -985,7 +998,7 @@ app.post("/api/users/create-user", rolesMiddleware(["admin","branchadmin"]), asy
         companyId,
         contactNo,
         dateOfBirth,
-        role: role || designation || "employee",
+        role: designation,
         email,
         joiningDate,
         firstName,
@@ -1002,7 +1015,6 @@ app.post("/api/users/create-user", rolesMiddleware(["admin","branchadmin"]), asy
     res.status(500).json({ error: errors.createUserError });
   }
 });
-
 
 function generateTemporaryPassword(length = 6) {
   const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%";
