@@ -3250,7 +3250,7 @@ app.post('/api/users/forget-password', async (req, res) => {
     }));
 
     await ses.sendEmail({
-      Source: 'kj.me.cd@gmail.com',
+      Source: 'amsemailprovider@gmail.com',
       Destination: { ToAddresses: [email] },
       Message: {
         Subject: { Data: 'Password Reset Request' },
