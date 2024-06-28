@@ -49,19 +49,12 @@ app.use(express.json({ limit: "50mb" }));
 
 
 app.use((req, res, next) => {
-    const openPaths = [
-      "/api/users/login",
-      "/api/users/forget-password",
-      "/api/users/compare-otp",
-      "/api/users/reset-password"
-    ];
-  
-    if (!openPaths.includes(req.path)) {
-      authenticateToken(req, res, next);
-    } else {
-      next();
-    }
-  });
+  if (req.path !== "/api/users/login") {
+    authenticateToken(req, res, next);
+  } else {
+    next();
+  }
+});
 
 app.get(
   "/api/users/isWithinRadius/:companyId",
@@ -1022,7 +1015,6 @@ app.post("/api/users/create-user", rolesMiddleware(["admin","branchadmin"]), asy
     res.status(500).json({ error: errors.createUserError });
   }
 });
-
 
 function generateTemporaryPassword(length = 6) {
   const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%";
@@ -3350,6 +3342,7 @@ app.post('/api/users/reset-password', async (req, res) => {
     res.status(500).json({ message: 'Error resetting password' });
   }
 });   
+
 
 
 module.exports.handler = serverless(app);
