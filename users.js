@@ -967,7 +967,7 @@ app.post("/api/users/create-user", rolesMiddleware(["admin","branchadmin"]), asy
         companyId: companyId,
         contactNo: contactNo,
         dateOfBirth: dateOfBirth,
-        role: role || designation || "employee",
+        role: designation,
         email: email,
         joiningDate: joiningDate,
         firstName: firstName,
