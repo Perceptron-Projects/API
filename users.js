@@ -918,7 +918,7 @@ app.get("/api/users/companies/all", rolesMiddleware(["superadmin"]), async funct
 
 
 app.post("/api/users/create-user", rolesMiddleware(["admin","branchadmin"]), async function (req, res) {
-  const { companyId, contactNo, dateOfBirth, designation, branchName, email, joiningDate, firstName, lastName, username, branchId, role, permissions, ...otherDetails } = req.body;
+  const { companyId, contactNo, dateOfBirth, designation, branchName, email, joiningDate, firstName, lastName, username, branchId, role } = req.body;
 
   // Validate input data
   if (!companyId || !contactNo || !dateOfBirth || !designation || !email || !joiningDate || !firstName || !lastName || !username || !branchId || !branchName) {
