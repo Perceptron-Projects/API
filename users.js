@@ -975,7 +975,7 @@ app.post("/api/users/create-user", rolesMiddleware(["admin","branchadmin"]), asy
         username: username,
         password: hashedPassword,
         branchId: branchId,
-        imageUrl: imageUrl,
+        imageUrl: imageUrl || urls.employeeDefaultImage,
         branchName: branchName,
       },
     };
