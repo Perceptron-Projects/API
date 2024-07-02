@@ -49,12 +49,18 @@ app.use(express.json({ limit: "50mb" }));
 
 
 app.use((req, res, next) => {
-  if (req.path !== "/api/users/login") {
+  if (
+    req.path !== "/api/users/login" &&
+    req.path !== "/api/users/forget-password" &&
+    req.path !== "/api/users/reset-password" &&
+    req.path !== "/api/users/compare-otp"
+  ) {
     authenticateToken(req, res, next);
   } else {
     next();
   }
 });
+
 
 app.get(
   "/api/users/isWithinRadius/:companyId",
@@ -1933,60 +1939,6 @@ app.patch("/api/users/company/:id", rolesMiddleware(["superadmin"]), async funct
   }
 });
 
-app.post("/api/users/login", async function (req, res) {
-  const { email, password } = req.body;
-
-  const paramsAdmins = {
-    TableName: ADMINS_TABLE,
-    FilterExpression: "email = :email",
-    ExpressionAttributeValues: {
-      ":email": email,
-    },
-  };
-
-  const paramsEmployees = {
-    TableName: EMPLOYEES_TABLE,
-    FilterExpression: "email = :email",
-    ExpressionAttributeValues: {
-      ":email": email,
-    },
-  };
-
-  try {
-    const { Items: adminItems } = await dynamoDbClient.send(new ScanCommand(paramsAdmins));
-    const { Items: employeeItems } = await dynamoDbClient.send(new ScanCommand(paramsEmployees));
-
-    const user = adminItems[0] || employeeItems[0];
-
-    if (!user || !(await bcrypt.compare(password, user.password))) {
-      return res.status(401).json({ error: errors.invalidCredentials });
-    }
-
-
-    // Set the expiration time for the token (e.g., 1 hour from now) in milliseconds
-    const expiresInMilliseconds = 3600 * 1000 * 24; // 1 day in milliseconds
-    const expirationTime = Date.now() + expiresInMilliseconds;
-
-    const token = jwt.sign({
-      userId: user.userId,
-      companyId: user.companyId,
-      role: user.role,
-      exp: expirationTime, // Set the expiration time in the payload
-    }, JWT_SECRET);
-
-    res.json({
-      token,
-      role: user.role,
-      userId: user.userId,
-      companyId: user.companyId,
-      expiresIn: expiresInMilliseconds, // Include the expiration time in the response
-    });
-
-  } catch (error) {
-    console.log(error);
-    return res.status(500).json({ error: errors.getUsersError });
-  }
-});
 
 
 // Amasha's code
@@ -3160,12 +3112,12 @@ app.get(
     }, {});
 
     // calculate remaining leaves
-    const remainingLeaves = {
-      casual: 7 - leaveTypes.casual || 7,
-      annual: 14 - leaveTypes.annual || 14,
-      liue: 5 - leaveTypes.liue || 5,
-      medical: 7 - leaveTypes.medical || 7,
-    };
+  const remainingLeaves = {
+    casual: 7 - leaveTypes.casual || 7,
+    annual: 14 - leaveTypes.annual || 14,
+    liue: 5 - leaveTypes.liue || 5,
+    medical: 7 - leaveTypes.medical || 7,
+  };
 
     res.json({ leaveTypes, remainingLeaves });
   }
@@ -3205,7 +3157,8 @@ app.put(
 );
 
 // Route for handling forgot password requests
-app.post('/api/users/forget-password', async (req, res) => {
+app.post('/api/users/forget-password', async function (req, res)  {
+  console.log('Request:', req.body);
   try {
     const { email } = req.body;
     console.log('Email:', email);
@@ -3259,7 +3212,7 @@ app.post('/api/users/forget-password', async (req, res) => {
 
 
 // Route for comparing the OTP
-app.post('/api/users/compare-otp', async (req, res) => {
+app.post('/api/users/compare-otp', async function(req, res) {
   try {
     const { email, otp: providedOtp } = req.body;
 
@@ -3295,7 +3248,7 @@ app.post('/api/users/compare-otp', async (req, res) => {
 });
 
 // Route for resetting the password
-app.post('/api/users/reset-password', async (req, res) => {
+app.post('/api/users/reset-password', async function (req, res) {
   try {
     const { email, otp: providedOtp, newPassword } = req.body;
 
@@ -3343,6 +3296,64 @@ app.post('/api/users/reset-password', async (req, res) => {
   }
 });   
 
+app.post("/api/users/login", async function (req, res) {
+  const { email, password } = req.body;
 
+  const paramsAdmins = {
+    TableName: ADMINS_TABLE,
+    FilterExpression: "email = :email",
+    ExpressionAttributeValues: {
+      ":email": email,
+    },
+  };
+
+  const paramsEmployees = {
+    TableName: EMPLOYEES_TABLE,
+    FilterExpression: "email = :email",
+    ExpressionAttributeValues: {
+      ":email": email,
+    },
+  };
+
+  try {
+    const { Items: adminItems } = await dynamoDbClient.send(
+      new ScanCommand(paramsAdmins)
+    );
+    const { Items: employeeItems } = await dynamoDbClient.send(
+      new ScanCommand(paramsEmployees)
+    );
+
+    const user = adminItems[0] || employeeItems[0];
+
+    if (!user || !(await bcrypt.compare(password, user.password))) {
+      return res.status(401).json({ error: errors.invalidCredentials });
+    }
+
+    // Set the expiration time for the token (e.g., 1 hour from now) in milliseconds
+    const expiresInMilliseconds = 3600 * 1000 * 24; // 1 day in milliseconds
+    const expirationTime = Date.now() + expiresInMilliseconds;
+
+    const token = jwt.sign(
+      {
+        userId: user.userId,
+        companyId: user.companyId,
+        role: user.role,
+        exp: expirationTime, // Set the expiration time in the payload
+      },
+      JWT_SECRET
+    );
+
+    res.json({
+      token,
+      role: user.role,
+      userId: user.userId,
+      companyId: user.companyId,
+      expiresIn: expiresInMilliseconds, // Include the expiration time in the response
+    });
+  } catch (error) {
+    console.log(error);
+    return res.status(500).json({ error: errors.getUsersError });
+  }
+});
 
 module.exports.handler = serverless(app);
