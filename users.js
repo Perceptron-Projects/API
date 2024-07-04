@@ -153,7 +153,7 @@ app.get(
 );
 
 
-//get employee workfrom home requests
+//get employee workfrom home requests (Amasha)
 app.get(
   "/api/users/attendance/request/employees/:employeeId",
   async function (req, res) {
@@ -2183,6 +2183,7 @@ app.post("/api/users/employees/attendance/checkin", async function (req, res) {
     res.status(500).json({ error: errors.createAttendanceError });
   }
 });
+
 app.put(
   "/api/users/employees/attendance/checkin/:attendanceId",
   async function (req, res) {
