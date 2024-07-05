@@ -1,5 +1,6 @@
 require('dotenv').config();
 const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
+const AWS = require('aws-sdk');
 const {
   DynamoDBDocumentClient,
   GetCommand,
@@ -40,18 +41,26 @@ const LEAVES_CALENDAR_TABLE = process.env.LEAVES_CALENDAR_TABLE;
 
 const client = new DynamoDBClient();
 const dynamoDbClient = DynamoDBDocumentClient.from(client);
+const ses = new AWS.SES({ region: 'us-east-1' });
 
 app.use(cors());
 
 app.use(express.json({ limit: "50mb" }));
 
+
 app.use((req, res, next) => {
-  if (req.path !== "/api/users/login") {
+  if (
+    req.path !== "/api/users/login" &&
+    req.path !== "/api/users/forget-password" &&
+    req.path !== "/api/users/reset-password" &&
+    req.path !== "/api/users/compare-otp"
+  ) {
     authenticateToken(req, res, next);
   } else {
     next();
   }
 });
+
 
 app.get(
   "/api/users/isWithinRadius/:companyId",
@@ -139,6 +148,39 @@ app.get(
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: "Error checking user within radius" });
+    }
+  }
+);
+
+
+//get employee workfrom home requests (Amasha)
+app.get(
+  "/api/users/attendance/request/employees/:employeeId",
+  async function (req, res) {
+    employeeId = req.params.employeeId;
+
+    const params = {
+      TableName: ATTENDANCE_TABLE,
+      FilterExpression:
+        "#employeeId = :employeeId AND( #whf = :whf1 OR #whf = :whf2 OR #whf = :whf3) ",
+      ExpressionAttributeNames: {
+        "#employeeId": "employeeId",
+        "#whf": "whf",
+      },
+      ExpressionAttributeValues: {
+        ":employeeId": employeeId,
+        ":whf1": "accepted",
+        ":whf2": "rejected",
+        ":whf3": "pending",
+      },
+    };
+
+    try {
+      const { Items } = await dynamoDbClient.send(new ScanCommand(params));
+      res.json(Items);
+    } catch (error) {
+      res.status(500).json({ error: errors.getAttendanceError });
+      console.error(error);
     }
   }
 );
@@ -800,6 +842,52 @@ app.delete("/api/users/company/:id", rolesMiddleware(["superadmin"]), async func
 
     await dynamoDbClient.send(new DeleteCommand(companyParams));
 
+    //delete employees and admins of company also
+    const employeeParams = {
+      TableName: EMPLOYEES_TABLE,
+      FilterExpression: "#companyId = :companyId",
+      ExpressionAttributeNames: {
+        "#companyId": "companyId",
+      },
+      ExpressionAttributeValues: {
+        ":companyId": companyId
+      },
+    };
+
+    const adminParams = {
+      TableName: ADMINS_TABLE,
+      FilterExpression: "#companyId = :companyId",
+      ExpressionAttributeNames: {
+        "#companyId": "companyId",
+      },
+      ExpressionAttributeValues: {
+        ":companyId": companyId
+      },
+    };
+
+    const { Items: employees } = await dynamoDbClient.send(new ScanCommand(employeeParams));
+    const { Items: admins } = await dynamoDbClient.send(new ScanCommand(adminParams));
+
+    for (const employee of employees) {
+      const employeeParams = {
+        TableName: EMPLOYEES_TABLE,
+        Key: {
+          userId: employee.userId,
+        },
+      };
+      await dynamoDbClient.send(new DeleteCommand(employeeParams));
+    }
+
+    for (const admin of admins) {
+      const adminParams = {
+        TableName: ADMINS_TABLE,
+        Key: {
+          userId: admin.userId,
+        },
+      };
+      await dynamoDbClient.send(new DeleteCommand(adminParams));
+    }
+
     res.json({ message: "Company deleted successfully" });
   } catch (error) {
     console.log(error);
@@ -807,6 +895,7 @@ app.delete("/api/users/company/:id", rolesMiddleware(["superadmin"]), async func
   }
 }
 );
+
 
 app.get("/api/users/companies/all", rolesMiddleware(["superadmin"]), async function (req, res) {
   
@@ -827,11 +916,11 @@ app.get("/api/users/companies/all", rolesMiddleware(["superadmin"]), async funct
 });
 
 
-app.post("/api/users/create-user", rolesMiddleware(["admin", "branchadmin"]), async function (req, res) {
-    const { companyId, contactNo, dateOfBirth, designation, branchName, email, joiningDate, firstName, lastName, username, branchId } = req.body;
+app.post("/api/users/create-user", rolesMiddleware(["admin","branchadmin"]), async function (req, res) {
+  const { companyId, contactNo, dateOfBirth, designation, branchName, email, joiningDate, firstName, lastName, username, branchId, role } = req.body;
 
-    // Validate input data
-    if (
+  // Validate input data
+  if (
         typeof companyId !== "string" ||
         typeof contactNo !== "string" ||
         typeof dateOfBirth !== "string" ||
@@ -848,66 +937,121 @@ app.post("/api/users/create-user", rolesMiddleware(["admin", "branchadmin"]), as
         return;
     }
 
-    let imageUrl = '';
-
-    if (req.body.image) {
-        try {
-            // Await the result of the uploadImage function
-            const uploadResult = await uploadImage(req.body.image);
-            imageUrl = uploadResult.imageUrl;
-        } catch (error) {
-            console.error("Error:", error);
-            res.status(500).json({ error: errors.imageUploadError });
-            return;
-        }
-    }
-
-    const userId =  "EMP-" +generateUniqueUserId();
-
-    const password = bcrypt.hashSync("employee123", 10);
-
-    const params = {
-        TableName: EMPLOYEES_TABLE,
-        Item: {
-            userId: userId,
-            companyId: companyId,
-            contactNo: contactNo,
-            dateOfBirth: dateOfBirth,
-            role: designation,
-            email: email,
-            joiningDate: joiningDate,
-            firstName: firstName,
-            lastName: lastName,
-            username: username,
-            password: password,
-            branchId: branchId,
-            imageUrl: imageUrl || urls.employeeDefaultImage,
-            branchName: branchName,
-        },
+  try {
+    // Check if email already exists
+    const checkEmailParams = {
+      TableName: EMPLOYEES_TABLE,
+      FilterExpression: 'email = :email',
+      ExpressionAttributeValues: {
+        ':email': email,
+      },
     };
 
-    try {
-        await dynamoDbClient.send(new PutCommand(params));
-        res.json({
-            userId,
-            companyId,
-            contactNo,
-            dateOfBirth,
-            role: designation,
-            email,
-            joiningDate,
-            firstName,
-            lastName,
-            username,
-            branchId,
-            imageUrl,
-            branchName,
-        });
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: errors.createUserError });
+    const { Items } = await dynamoDbClient.send(new ScanCommand(checkEmailParams));
+
+    if (Items.length > 0) {
+      return res.status(400).json({ message: 'User with the provided email already exists' });
     }
+
+    // Upload image if provided
+    let imageUrl = '';
+    if (req.body.image) {
+      try {
+        const uploadResult = await uploadImage(req.body.image);
+        imageUrl = uploadResult.imageUrl;
+      } catch (error) {
+        console.error("Image upload error:", error);
+        return res.status(500).json({ error: "Image upload error" });
+      }
+    } else {
+      imageUrl = urls.employeeDefaultImage;
+    }
+
+    // Create user
+    const userId = "EMP-" + uuidv4();
+    const temporaryPassword = generateTemporaryPassword();
+    const hashedPassword = bcrypt.hashSync(temporaryPassword, 10);
+
+    const params = {
+      TableName: EMPLOYEES_TABLE,
+      Item: {
+        userId: userId,
+        companyId: companyId,
+        contactNo: contactNo,
+        dateOfBirth: dateOfBirth,
+        role: designation,
+        email: email,
+        joiningDate: joiningDate,
+        firstName: firstName,
+        lastName: lastName,
+        username: username,
+        password: hashedPassword,
+        branchId: branchId,
+        imageUrl: imageUrl || urls.employeeDefaultImage,
+        branchName: branchName,
+      },
+    };
+
+    await dynamoDbClient.send(new PutCommand(params));
+
+    // Send email with temporary password
+    await sendEmail(email, firstName, temporaryPassword);
+
+    res.json({
+      message: "User created successfully",
+      user: {
+        userId,
+        companyId,
+        contactNo,
+        dateOfBirth,
+        role: designation,
+        email,
+        joiningDate,
+        firstName,
+        lastName,
+        username,
+        branchId,
+        imageUrl,
+        branchName,
+      }
+    });
+
+  } catch (error) {
+    console.error("Error creating user:", error);
+    res.status(500).json({ error: errors.createUserError });
+  }
 });
+
+function generateTemporaryPassword(length = 6) {
+  const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%";
+  let password = "";
+  for (let i = 0; i < length; i++) {
+      const randomIndex = Math.floor(Math.random() * charset.length);
+      password += charset[randomIndex];
+  }
+  return password;
+}
+
+async function sendEmail(email, firstName, temporaryPassword) {
+  const params = {
+      Source: 'amsemailprovider@gmail.com', 
+      Destination: { ToAddresses: [email] },
+      Message: {
+          Subject: { Data: 'SyncIn - Your Temporary Password' },
+          Body: {
+              Text: { Data: `Hello ${firstName},\n\nYour Email : ${email}\nYour temporary password is: ${temporaryPassword}\nPlease change it upon your first login.\n\nBest regards,\nSyncIn Team` }
+          }
+      }
+  };
+
+  try {
+      const sendPromise = await ses.sendEmail(params).promise();
+      console.log(sendPromise);
+  } catch (error) {
+      console.error("Email not sent:", error);
+      throw error; 
+  }
+}
 
 app.get("/api/users/check-email/:email/:id", rolesMiddleware(["superadmin", "admin", "branchadmin", "hr", "employee"]), async function (req, res) {
   const email = req.params.email;
@@ -1795,60 +1939,6 @@ app.patch("/api/users/company/:id", rolesMiddleware(["superadmin"]), async funct
   }
 });
 
-app.post("/api/users/login", async function (req, res) {
-  const { email, password } = req.body;
-
-  const paramsAdmins = {
-    TableName: ADMINS_TABLE,
-    FilterExpression: "email = :email",
-    ExpressionAttributeValues: {
-      ":email": email,
-    },
-  };
-
-  const paramsEmployees = {
-    TableName: EMPLOYEES_TABLE,
-    FilterExpression: "email = :email",
-    ExpressionAttributeValues: {
-      ":email": email,
-    },
-  };
-
-  try {
-    const { Items: adminItems } = await dynamoDbClient.send(new ScanCommand(paramsAdmins));
-    const { Items: employeeItems } = await dynamoDbClient.send(new ScanCommand(paramsEmployees));
-
-    const user = adminItems[0] || employeeItems[0];
-
-    if (!user || !(await bcrypt.compare(password, user.password))) {
-      return res.status(401).json({ error: errors.invalidCredentials });
-    }
-
-
-    // Set the expiration time for the token (e.g., 1 hour from now) in milliseconds
-    const expiresInMilliseconds = 3600 * 1000 * 24; // 1 day in milliseconds
-    const expirationTime = Date.now() + expiresInMilliseconds;
-
-    const token = jwt.sign({
-      userId: user.userId,
-      companyId: user.companyId,
-      role: user.role,
-      exp: expirationTime, // Set the expiration time in the payload
-    }, JWT_SECRET);
-
-    res.json({
-      token,
-      role: user.role,
-      userId: user.userId,
-      companyId: user.companyId,
-      expiresIn: expiresInMilliseconds, // Include the expiration time in the response
-    });
-
-  } catch (error) {
-    console.log(error);
-    return res.status(500).json({ error: errors.getUsersError });
-  }
-});
 
 
 // Amasha's code
@@ -2075,7 +2165,11 @@ app.post("/api/users/employees/attendance/checkin", async function (req, res) {
     TableName: ATTENDANCE_TABLE,
     Item: {
       attendanceId: uuidv4(),
-      reqTime: new Date().toUTCString(),
+      reqTime: new Date().toISOString(),
+      whf: "no",
+
+      stage: "checkIn",
+
       ...req.body,
     },
   };
@@ -2086,7 +2180,7 @@ app.post("/api/users/employees/attendance/checkin", async function (req, res) {
     });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: errors.createUserError });
+    res.status(500).json({ error: errors.createAttendanceError });
   }
 });
 
@@ -2094,16 +2188,17 @@ app.put(
   "/api/users/employees/attendance/checkin/:attendanceId",
   async function (req, res) {
     const attendanceId = req.params.attendanceId;
-    console.log("attendanceId", attendanceId);
+
     const params = {
       TableName: ATTENDANCE_TABLE,
       Key: {
         attendanceId: attendanceId,
         reqTime: req.body.reqTime,
       },
-      UpdateExpression: "SET checkIn = :checkIn",
+      UpdateExpression: "SET checkIn = :checkIn , stage = :stage",
       ExpressionAttributeValues: {
         ":checkIn": req.body.checkIn,
+        ":stage": "checkIn",
       },
       ConditionExpression: "attribute_exists(attendanceId)",
       ReturnValues: "ALL_NEW",
@@ -2174,60 +2269,9 @@ app.get("/api/users/company/employees/:companyId", async function (req, res) {
   res.json(employees);
 });
 
-
-// check in from office
-app.post("/api/users/employees/attendance/checkin", async function (req, res) {
-  const params = {
-    TableName: ATTENDANCE_TABLE,
-    Item: {
-      attendanceId: uuidv4(),
-      reqTime: new Date().toUTCString(),
-      ...req.body,
-    },
-  };
-  try {
-    await dynamoDbClient.send(new PutCommand(params));
-    res.json({
-      message: "Attendance added successfully",
-    });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: errors.createUserError });
-  }
-});
-
-app.put(
-  "/api/users/employees/attendance/checkin/:attendanceId",
-  async function (req, res) {
-    const attendanceId = req.params.attendanceId;
-    console.log("attendanceId", attendanceId);
-    const params = {
-      TableName: ATTENDANCE_TABLE,
-      Key: {
-        attendanceId: attendanceId,
-        reqTime: req.body.reqTime,
-      },
-      UpdateExpression: "SET checkIn = :checkIn",
-      ExpressionAttributeValues: {
-        ":checkIn": req.body.checkIn,
-      },
-      ConditionExpression: "attribute_exists(attendanceId)",
-      ReturnValues: "ALL_NEW",
-    };
-    try {
-      await dynamoDbClient.send(new UpdateCommand(params));
-      res.json({ message: "Attendance updated successfully" });
-    } catch (error) {
-      console.error(error);
-      res.status(500).json({ messages: "Failed to update attendance" });
-    }
-  }
-);
-
 // mark check out from office
 
 // check out
-
 app.put(
   "/api/users/employees/attendance/checkout/:attendanceId",
   async function (req, res) {
@@ -2239,9 +2283,10 @@ app.put(
         attendanceId: attendanceId,
         reqTime: req.body.reqTime,
       },
-      UpdateExpression: "SET checkOut = :checkOut",
+      UpdateExpression: "SET checkOut = :checkOut , stage = :stage",
       ExpressionAttributeValues: {
         ":checkOut": new Date(req.body.checkOut).toISOString(),
+        ":stage": "completed",
       },
       ConditionExpression: "attribute_exists(attendanceId)",
       ReturnValues: "ALL_NEW",
@@ -2260,12 +2305,33 @@ app.put(
 // new whf request
 
 app.post("/api/users/employees/attendance/request", async function (req, res) {
+  // check if whfDate already exists
+
+  req.body.whfDate = new Date(req.body.whfDate).toLocaleDateString({
+    timeZone: "Asia/Kolkata",
+  });
+  const { Items: whfDates } = await dynamoDbClient.send(
+    new ScanCommand({
+      TableName: ATTENDANCE_TABLE,
+      FilterExpression: "whfDate = :whfDate AND employeeId = :employeeId",
+      ExpressionAttributeValues: {
+        ":employeeId": req.body.employeeId,
+        ":whfDate": req.body.whfDate,
+      },
+    })
+  );
+  if (whfDates && whfDates.length > 0) {
+    res.status(409).json({ error: errors.whfDateAlreadyExists });
+    return;
+  }
+
   const params = {
     TableName: ATTENDANCE_TABLE,
     Item: {
       attendanceId: uuidv4(),
       reqTime: new Date().toISOString(),
       whf: "pending",
+      stage: "request",
       ...req.body,
     },
   };
@@ -2363,10 +2429,11 @@ app.put(
         attendanceId: attendanceId,
         reqTime: req.body.reqTime,
       },
-      UpdateExpression: "SET whf = :whf",
+      UpdateExpression: "SET whf = :whf , stage = :stage",
 
       ExpressionAttributeValues: {
         ":whf": req.body.whf,
+        ":stage": req.body.stage,
       },
       ReturnValues: "ALL_NEW",
     };
@@ -2382,26 +2449,23 @@ app.put(
 );
 
 
-// get latest whf request
+// get latest checkIn by stage
 app.get(
-  "/api/users/employees/attendance/:employeeId",
+  "/api/users/employees/attendance/checkin/:employeeId",
   async function (req, res) {
     const employeeId = req.params.employeeId;
-    console.log("employeeId:", employeeId);
 
     const params = {
       TableName: ATTENDANCE_TABLE,
-
-      FilterExpression: "#employeeId = :employeeId",
-
+      FilterExpression: "#employeeId = :employeeId AND #stage = :stage",
       ExpressionAttributeNames: {
         "#employeeId": "employeeId",
+        "#stage": "stage",
       },
-
       ExpressionAttributeValues: {
         ":employeeId": employeeId,
+        ":stage": "checkIn",
       },
-
       ScanIndexForward: false,
     };
     const { Items: attendance } = await dynamoDbClient.send(
@@ -2417,6 +2481,7 @@ app.get(
 );
 
 // get attendance by employee id by between start date and end date and current year
+
 app.get(
   "/api/users/employees/attendance/:employeeId/:startDate/:endDate",
   async function (req, res) {
@@ -2452,7 +2517,7 @@ app.get(
         fri: 0,
       };
       attendance.forEach((attendance) => {
-        // if check attendance have checkIn and checkOut
+        // iff check attendance have checkIn and checkOut
         if (attendance.checkIn && attendance.checkOut) {
           const checkIn = new Date(attendance.checkIn);
           const checkOut = new Date(attendance.checkOut);
@@ -2481,6 +2546,418 @@ app.get(
     }
   }
 );
+
+
+// get latest stage equal to whf or office and requestedDate is today
+app.get(
+  "/api/users/employees/attendance/:employeeId",
+  async function (req, res) {
+    //convert new date into india timezone
+    const newDate = new Date().toLocaleDateString({
+      timeZone: "Asia/Kolkata",
+    });
+
+    const employeeId = req.params.employeeId;
+    const params = {
+      TableName: ATTENDANCE_TABLE,
+      FilterExpression:
+        "#employeeId = :employeeId  AND #whfDate = :whfDate AND (#stage = :stage1 OR #stage = :stage2)",
+      ExpressionAttributeNames: {
+        "#employeeId": "employeeId",
+        "#stage": "stage",
+        "#whfDate": "whfDate",
+      },
+      ExpressionAttributeValues: {
+        ":employeeId": employeeId,
+        ":stage1": "whf",
+        ":stage2": "office",
+        ":whfDate": newDate,
+      },
+    };
+    try {
+      const { Items } = await dynamoDbClient.send(new ScanCommand(params));
+      res.json(Items);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: errors.getAttendanceError });
+    }
+  }
+);
+
+//self edit profile for employees
+
+app.put(
+  "/api/users/employee/edit-profile/:employeeId",
+  async function (req, res) {
+    const id = req.params.employeeId;
+
+
+
+
+    // check req body
+    if (!req.body) {
+      res.status(400).json({ error: "Request body is empty" });
+      return;
+    }
+
+
+    // check if email already exists employee table
+
+
+    const emailParams = {
+      TableName: EMPLOYEES_TABLE,
+      FilterExpression: "#email = :email",
+      ExpressionAttributeNames: {
+        "#email": "email",
+      },
+      ExpressionAttributeValues: {
+        ":email": req.body.email,
+      },
+    };
+    const { Items: employeesEmail } = await dynamoDbClient.send(
+      new ScanCommand(emailParams)
+    );
+    if (employeesEmail.length > 0 && employeesEmail[0].userId !== id) {
+      res.status(400).json({ error: "Email already exists" });
+      return;
+    }
+
+
+    // check if email already exists in admin table
+
+
+    const adminEmailParams = {
+      TableName: ADMINS_TABLE,
+      FilterExpression: "#email = :email",
+      ExpressionAttributeNames: {
+        "#email": "email",
+      },
+      ExpressionAttributeValues: {
+        ":email": req.body.email,
+      },
+    };
+    const { Items: adminsEmail } = await dynamoDbClient.send(
+      new ScanCommand(adminEmailParams)
+    );
+    if (adminsEmail.length > 0 && adminsEmail[0].userId !== id) {
+      res.status(400).json({ error: "Email already exists" });
+      return;
+    }
+
+
+    // check if username already exists employee table
+    const params = {
+      TableName: EMPLOYEES_TABLE,
+      FilterExpression: "#username = :username",
+      ExpressionAttributeNames: {
+        "#username": "username",
+      },
+      ExpressionAttributeValues: {
+        ":username": req.body.username,
+      },
+    };
+    const { Items: employeesUsername } = await dynamoDbClient.send(
+      new ScanCommand(params)
+    );
+    if (employeesUsername.length > 0 && employeesUsername[0].userId !== id) {
+      res.status(400).json({ error: "Username already exists" });
+      return;
+    }
+
+
+    // check if username already exists in admin table
+    const adminParams = {
+      TableName: ADMINS_TABLE,
+      FilterExpression: "#userName = :userName",
+      ExpressionAttributeNames: {
+        "#userName": "userName",
+      },
+      ExpressionAttributeValues: {
+        ":userName": req.body.username,
+      },
+    };
+    const { Items: adminsUsername } = await dynamoDbClient.send(
+      new ScanCommand(adminParams)
+    );
+    if (adminsUsername.length > 0 && adminsUsername[0].userId !== id) {
+      res.status(400).json({ error: "Username already exists" });
+      return;
+    }
+
+
+    // get employee details
+    const employeeDetailsParam = {
+      TableName: EMPLOYEES_TABLE,
+      Key: {
+        userId: id,
+      },
+    };
+    const { Item: employeeDetails } = await dynamoDbClient.send(
+      new GetCommand(employeeDetailsParam)
+    );
+
+
+    if (
+      employeeDetails.password &&
+      req.body.currentPassword &&
+      !(await bcrypt.compare(
+        req.body.currentPassword,
+        employeeDetails.password
+      ))
+    ) {
+      res.status(400).json({ error: "Current password is incorrect" });
+      return;
+    }
+
+
+    if (req.body.currentPassword && req.body.newPassword) {
+      req.body.password = bcrypt.hashSync(req.body.newPassword, 10);
+      req.body.newPassword = null;
+      req.body.currentPassword = null;
+    } else {
+      req.body.password = employeeDetails.password;
+    }
+
+
+    //save image to s3
+    const base64regex =
+      /^([0-9a-zA-Z+/]{4})*(([0-9a-zA-Z+/]{2}==)|([0-9a-zA-Z+/]{3}=))?$/;
+
+
+    if (base64regex.test(req.body.profileImage)) {
+      try {
+        const uploadResult = await uploadImage(req.body.profileImage);
+        req.body.imageUrl = uploadResult.imageUrl;
+        req.body.profileImage = null;
+        console.log(uploadResult);
+      } catch (error) {
+        console.error("Error:", error);
+        res.status(500).json({ error: errors.imageUploadError });
+        return;
+      }
+    } else {
+      req.body.imageUrl = req.body.profileImage;
+      req.body.profileImage = null;
+    }
+
+
+    // update admin details
+
+
+    const updateParams = {
+      TableName: EMPLOYEES_TABLE,
+      Key: {
+        userId: id,
+      },
+      UpdateExpression:
+        "SET firstName = :firstName, lastName = :lastName, email = :email, username = :username, password = :password, imageUrl = :imageUrl, contactNo = :contactNo",
+      ExpressionAttributeValues: {
+        ":firstName": req.body.firstName,
+        ":lastName": req.body.lastName,
+        ":email": req.body.email,
+        ":username": req.body.username,
+        ":password": req.body.password,
+        ":contactNo": req.body.contactNo,
+        ":imageUrl": req.body.imageUrl,
+      },
+      ReturnValues: "ALL_NEW",
+    };
+
+
+    try {
+      const result = await dynamoDbClient.send(new UpdateCommand(updateParams));
+      res.json(result.Attributes);
+    } catch (error) {
+   
+      res.status(500).json({ error: "Could not update employee" });
+    }
+  }
+);
+
+//self profile edit for admins
+
+app.put("/api/users/admin/edit-profile/:adminId", async function (req, res) {
+  const id = req.params.adminId;
+
+
+  console.log(req.body);
+
+
+  // check req body
+  if (!req.body) {
+    res.status(400).json({ error: "Request body is empty" });
+    return;
+  }
+
+
+  // check if email already exists employee table
+
+
+  const emailParams = {
+    TableName: EMPLOYEES_TABLE,
+    FilterExpression: "#email = :email",
+    ExpressionAttributeNames: {
+      "#email": "email",
+    },
+    ExpressionAttributeValues: {
+      ":email": req.body.email,
+    },
+  };
+  const { Items: employeesEmail } = await dynamoDbClient.send(
+    new ScanCommand(emailParams)
+  );
+  if (employeesEmail.length > 0 && employeesEmail[0].userId !== id) {
+    res.status(400).json({ error: "Email already exists" });
+    return;
+  }
+
+
+  // check if email already exists in admin table
+
+
+  const adminEmailParams = {
+    TableName: ADMINS_TABLE,
+    FilterExpression: "#email = :email",
+    ExpressionAttributeNames: {
+      "#email": "email",
+    },
+    ExpressionAttributeValues: {
+      ":email": req.body.email,
+    },
+  };
+  const { Items: adminsEmail } = await dynamoDbClient.send(
+    new ScanCommand(adminEmailParams)
+  );
+  if (adminsEmail.length > 0 && adminsEmail[0].userId !== id) {
+    res.status(400).json({ error: "Email already exists" });
+    return;
+  }
+
+
+  // check if username already exists employee table
+  const params = {
+    TableName: EMPLOYEES_TABLE,
+    FilterExpression: "#username = :username",
+    ExpressionAttributeNames: {
+      "#username": "username",
+    },
+    ExpressionAttributeValues: {
+      ":username": req.body.username,
+    },
+  };
+  const { Items: employeesUsername } = await dynamoDbClient.send(
+    new ScanCommand(params)
+  );
+  if (employeesUsername.length > 0 && employeesUsername[0].userId !== id) {
+    res.status(400).json({ error: "Username already exists" });
+    return;
+  }
+
+
+  // check if username already exists in admin table
+  const adminParams = {
+    TableName: ADMINS_TABLE,
+    FilterExpression: "#userName = :userName",
+    ExpressionAttributeNames: {
+      "#userName": "userName",
+    },
+    ExpressionAttributeValues: {
+      ":userName": req.body.username,
+    },
+  };
+  const { Items: adminsUsername } = await dynamoDbClient.send(
+    new ScanCommand(adminParams)
+  );
+  if (adminsUsername.length > 0 && adminsUsername[0].userId !== id) {
+    res.status(400).json({ error: "Username already exists" });
+    return;
+  }
+
+
+  // get admin details
+  const adminDetailsParams = {
+    TableName: ADMINS_TABLE,
+    Key: {
+      userId: id,
+    },
+  };
+  const { Item: adminDetails } = await dynamoDbClient.send(
+    new GetCommand(adminDetailsParams)
+  );
+
+
+  if (
+    adminDetails.password &&
+    req.body.currentPassword &&
+    !(await bcrypt.compare(req.body.currentPassword, adminDetails.password))
+  ) {
+    res.status(400).json({ error: "Current password is incorrect" });
+    return;
+  }
+
+
+  if (req.body.currentPassword && req.body.newPassword) {
+    req.body.password = bcrypt.hashSync(req.body.newPassword, 10);
+    req.body.newPassword = null;
+    req.body.currentPassword = null;
+  } else {
+    req.body.password = adminDetails.password;
+  }
+
+
+  //save image to s3
+  const base64regex =
+    /^([0-9a-zA-Z+/]{4})*(([0-9a-zA-Z+/]{2}==)|([0-9a-zA-Z+/]{3}=))?$/;
+
+
+  if (base64regex.test(req.body.profileImage)) {
+    try {
+      const uploadResult = await uploadImage(req.body.profileImage);
+      req.body.adminImageUrl = uploadResult.imageUrl;
+      req.body.profileImage = null;
+      console.log(uploadResult);
+    } catch (error) {
+      console.error("Error:", error);
+      res.status(500).json({ error: errors.imageUploadError });
+      return;
+    }
+  } else {
+    req.body.adminImageUrl = req.body.profileImage;
+    req.body.profileImage = null;
+  }
+
+
+  // update admin details
+
+
+  const updateParams = {
+    TableName: ADMINS_TABLE,
+    Key: {
+      userId: id,
+    },
+    UpdateExpression:
+      "SET firstName = :firstName, lastName = :lastName, email = :email, userName = :userName, password = :password, adminImageUrl = :adminImageUrl, contactNo = :contactNo",
+    ExpressionAttributeValues: {
+      ":firstName": req.body.firstName,
+      ":lastName": req.body.lastName,
+      ":email": req.body.email,
+      ":userName": req.body.username,
+      ":password": req.body.password,
+      ":contactNo": req.body.contactNo,
+      ":adminImageUrl": req.body.adminImageUrl,
+    },
+    ReturnValues: "ALL_NEW",
+  };
+
+
+  try {
+    const result = await dynamoDbClient.send(new UpdateCommand(updateParams));
+    res.json(result.Attributes);
+  } catch (error) {
+    res.status(500).json({ error });
+  }
+});
+
 
 
 // End of Amasha's code
@@ -2636,12 +3113,12 @@ app.get(
     }, {});
 
     // calculate remaining leaves
-    const remainingLeaves = {
-      casual: 12 - leaveTypes.casual || 12,
-      fullDay: 12 - leaveTypes.fullDay || 12,
-      halfDay: 12 - leaveTypes.halfDay || 12,
-      medical: 12 - leaveTypes.medical || 12,
-    };
+  const remainingLeaves = {
+    casual: 7 - leaveTypes.casual || 7,
+    annual: 14 - leaveTypes.annual || 14,
+    liue: 5 - leaveTypes.liue || 5,
+    medical: 7 - leaveTypes.medical || 7,
+  };
 
     res.json({ leaveTypes, remainingLeaves });
   }
@@ -2680,7 +3157,204 @@ app.put(
   }
 );
 
-   
+// Route for handling forgot password requests
+app.post('/api/users/forget-password', async function (req, res)  {
+  console.log('Request:', req.body);
+  try {
+    const { email } = req.body;
+    console.log('Email:', email);
 
+    const params = {
+      TableName: EMPLOYEES_TABLE,
+      FilterExpression: 'email = :email',
+      ExpressionAttributeValues: {
+        ':email': email,
+      },
+    };
+
+    const { Items } = await dynamoDbClient.send(new ScanCommand(params));
+
+    if (Items.length === 0) {
+      return res.status(404).json({ message: 'No user found with the provided email' });
+    }
+
+    const userId = Items[0].userId;
+
+    // Generate a random 6-digit OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const expirationTime = new Date();
+    expirationTime.setMinutes(expirationTime.getMinutes() + 15);
+
+    await dynamoDbClient.send(new UpdateCommand({
+      TableName: EMPLOYEES_TABLE,
+      Key: { userId },
+      UpdateExpression: 'SET otp = :otp, expiresAt = :expiresAt',
+      ExpressionAttributeValues: {
+        ':otp': otp,
+        ':expiresAt': expirationTime.getTime(),
+      },
+    }));
+
+    await ses.sendEmail({
+      Source: 'amsemailprovider@gmail.com',
+      Destination: { ToAddresses: [email] },
+      Message: {
+        Subject: { Data: 'Password Reset Request' },
+        Body: { Text: { Data: `Your password reset token is: ${otp}` } },
+      },
+    }).promise();
+
+    res.status(200).json({ message: 'Password reset token sent successfully via email' });
+  } catch (error) {
+    console.error('Error:', error);
+    res.status(500).json({ message: 'Error processing forgot password request' });
+  }
+});
+
+
+// Route for comparing the OTP
+app.post('/api/users/compare-otp', async function(req, res) {
+  try {
+    const { email, otp: providedOtp } = req.body;
+
+    const params = {
+      TableName: EMPLOYEES_TABLE,
+      FilterExpression: 'email = :email',
+      ExpressionAttributeValues: {
+        ':email': email,
+      },
+    };
+
+    const { Items } = await dynamoDbClient.send(new ScanCommand(params));
+
+    if (Items.length === 0) {
+      return res.status(400).json({ message: 'Invalid email or OTP' });
+    }
+
+    const { otp: storedOtp, expiresAt } = Items[0];
+
+    if (providedOtp !== storedOtp) {
+      return res.status(400).json({ message: 'Invalid email or OTP' });
+    }
+
+    if (Date.now() > expiresAt) {
+      return res.status(400).json({ message: 'OTP has expired' });
+    }
+
+    return res.status(200).json({ message: 'OTP is valid' });
+  } catch (error) {
+    console.error('Error:', error);
+    res.status(500).json({ message: 'Error comparing OTP' });
+  }
+});
+
+// Route for resetting the password
+app.post('/api/users/reset-password', async function (req, res) {
+  try {
+    const { email, otp: providedOtp, newPassword } = req.body;
+
+    const params = {
+      TableName: EMPLOYEES_TABLE,
+      FilterExpression: 'email = :email',
+      ExpressionAttributeValues: {
+        ':email': email,
+      },
+    };
+
+    const { Items } = await dynamoDbClient.send(new ScanCommand(params));
+
+    if (Items.length === 0) {
+      return res.status(400).json({ message: 'Invalid request' });
+    }
+
+    const { otp: storedOtp, expiresAt, userId } = Items[0];
+
+    if (providedOtp !== storedOtp) {
+      return res.status(400).json({ message: 'Invalid email or OTP' });
+    }
+
+    if (Date.now() > expiresAt) {
+      return res.status(400).json({ message: 'OTP has expired' });
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    await dynamoDbClient.send(new UpdateCommand({
+      TableName: EMPLOYEES_TABLE,
+      Key: { userId },
+      UpdateExpression: 'SET password = :password, otp = :nullValue, expiresAt = :pastTime',
+      ExpressionAttributeValues: {
+        ':password': hashedPassword,
+        ':nullValue': null,
+        ':pastTime': 0,
+      },
+    }));
+
+    return res.status(200).json({ message: 'Password reset successfully' });
+  } catch (error) {
+    console.error('Error:', error);
+    res.status(500).json({ message: 'Error resetting password' });
+  }
+});   
+
+app.post("/api/users/login", async function (req, res) {
+  const { email, password } = req.body;
+
+  const paramsAdmins = {
+    TableName: ADMINS_TABLE,
+    FilterExpression: "email = :email",
+    ExpressionAttributeValues: {
+      ":email": email,
+    },
+  };
+
+  const paramsEmployees = {
+    TableName: EMPLOYEES_TABLE,
+    FilterExpression: "email = :email",
+    ExpressionAttributeValues: {
+      ":email": email,
+    },
+  };
+
+  try {
+    const { Items: adminItems } = await dynamoDbClient.send(
+      new ScanCommand(paramsAdmins)
+    );
+    const { Items: employeeItems } = await dynamoDbClient.send(
+      new ScanCommand(paramsEmployees)
+    );
+
+    const user = adminItems[0] || employeeItems[0];
+
+    if (!user || !(await bcrypt.compare(password, user.password))) {
+      return res.status(401).json({ error: errors.invalidCredentials });
+    }
+
+    // Set the expiration time for the token (e.g., 1 hour from now) in milliseconds
+    const expiresInMilliseconds = 3600 * 1000 * 24; // 1 day in milliseconds
+    const expirationTime = Date.now() + expiresInMilliseconds;
+
+    const token = jwt.sign(
+      {
+        userId: user.userId,
+        companyId: user.companyId,
+        role: user.role,
+        exp: expirationTime, // Set the expiration time in the payload
+      },
+      JWT_SECRET
+    );
+
+    res.json({
+      token,
+      role: user.role,
+      userId: user.userId,
+      companyId: user.companyId,
+      expiresIn: expiresInMilliseconds, // Include the expiration time in the response
+    });
+  } catch (error) {
+    console.log(error);
+    return res.status(500).json({ error: errors.getUsersError });
+  }
+});
 
 module.exports.handler = serverless(app);
