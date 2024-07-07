@@ -452,6 +452,7 @@ if (req.body.image) {
     // Await the result of the uploadImage function
     const uploadResult = await uploadImage(req.body.image);
     imageUrl = uploadResult.imageUrl;
+    console.log("imageUrl", imageUrl);
   } catch (error) {
     console.error("Error:", error);
     res.status(500).json({ error: errors.imageUploadError });
@@ -493,7 +494,8 @@ const updateParams = {
   Key: {
     userId: branchAdminId,
   },
-  UpdateExpression: "SET branchId = :branchId, contactNo = :contactNo, email = :email, firstName = :firstName, lastName = :lastName, username = :username, imageUrl = :imageUrl, branchName = :branchName",
+  UpdateExpression:
+    "SET branchId = :branchId, contactNo = :contactNo, email = :email, firstName = :firstName, lastName = :lastName, username = :username, adminImageUrl = :adminImageUrl, branchName = :branchName",
   ExpressionAttributeValues: {
     ":branchId": updatedBranchAdmin.branchId,
     ":contactNo": updatedBranchAdmin.contactNo,
@@ -501,7 +503,7 @@ const updateParams = {
     ":firstName": updatedBranchAdmin.firstName,
     ":lastName": updatedBranchAdmin.lastName,
     ":username": updatedBranchAdmin.username,
-    ":imageUrl": updatedBranchAdmin.adminImageUrl,
+    ":adminImageUrl": updatedBranchAdmin.imageUrl,
     ":branchName": updatedBranchAdmin.branchName,
   },
   ReturnValues: "ALL_NEW",
@@ -711,7 +713,7 @@ app.get("/api/users/admins/all", rolesMiddleware(["superadmin"]), async function
   }
 });
 
-app.get("/api/users/admins/:id", rolesMiddleware(["superadmin","admin"]), async function (req, res) {
+app.get("/api/users/admins/:id", rolesMiddleware(["superadmin","admin","branchadmin"]), async function (req, res) {
   try {
     const adminId = req.params.id;
     const adminParams = {
@@ -969,7 +971,8 @@ app.post("/api/users/create-user", rolesMiddleware(["admin","branchadmin"]), asy
 
     // Create user
     const userId = "EMP-" + uuidv4();
-    const temporaryPassword = generateTemporaryPassword();
+   // const temporaryPassword = generateTemporaryPassword();
+   const temporaryPassword = "employee123"
     const hashedPassword = bcrypt.hashSync(temporaryPassword, 10);
 
     const params = {
@@ -995,7 +998,7 @@ app.post("/api/users/create-user", rolesMiddleware(["admin","branchadmin"]), asy
     await dynamoDbClient.send(new PutCommand(params));
 
     // Send email with temporary password
-    await sendEmail(email, firstName, temporaryPassword);
+   // await sendEmail(email, firstName, temporaryPassword);
 
     res.json({
       message: "User created successfully",
