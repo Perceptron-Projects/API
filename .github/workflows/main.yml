@@ -1,4 +1,4 @@
-name: Deploy main branch
+name: 🚀 Deploy main branch
 
 on:
   workflow_dispatch:
@@ -8,39 +8,37 @@ on:
 
 jobs:
   deploy:
-    name: Deploy
+    name: 📦 Deploy
     runs-on: ubuntu-latest
     strategy:
       matrix:
         node-version: [20.x]
 
     steps:
-      - name: Checkout Repository
+      - name: 📂 Checkout Repository
         uses: actions/checkout@v4
         with:
           persist-credentials: false
 
-      - name: Use Node.js ${{ matrix.node-version }}
+      - name: 🟢 Use Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
 
-      - name: Npm install
+      - name: 📥 Npm install
         run: npm install
         
-      - name: Install Postman CLI
+      - name: 📦 Install Postman CLI
         run: |
           curl -o- "https://dl-cli.pstmn.io/install/linux64.sh" | sh
-      - name: Login to Postman CLI
-        run: postman login --with-api-key ${{ secrets.POSTMAN_API_KEY }}
-      - name: Run API tests
-        run: |
-          postman collection run "${{ github.workspace }}/postman/collections/Users Service Testing.json" --integration-id "162141-${{ github.run_id }}"
 
-      - name: Run tests
+      - name: 🔑 Login to Postman CLI
+        run: postman login --with-api-key ${{ secrets.POSTMAN_API_KEY }}
+
+      - name: 🧪 Run tests
         run: npm test
 
-      - name: Serverless deploy
+      - name: ☁️ Serverless deploy
         uses: serverless/github-action@master
         with:
           args: deploy
