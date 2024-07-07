@@ -35,6 +35,10 @@ jobs:
       - name: 🔑 Login to Postman CLI
         run: postman login --with-api-key ${{ secrets.POSTMAN_API_KEY }}
 
+      - name: 🧪 Run API tests
+        run: |
+          postman collection run "${{ github.workspace }}/postman/collections/Users Service Testing.json" --integration-id "162141-${{ github.run_id }}"
+
       - name: 🧪 Run tests
         run: npm test
 
