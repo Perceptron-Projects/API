@@ -919,7 +919,7 @@ app.get("/api/users/companies/all", rolesMiddleware(["superadmin"]), async funct
 
 
 app.post("/api/users/create-user", rolesMiddleware(["superadmin", "admin","branchadmin"]), async function (req, res) {
-  const { companyId, contactNo, dateOfBirth, designation, branchName, email, joiningDate, firstName, lastName, username, branchId, role } = req.body;
+  const { companyId, contactNo, dateOfBirth, designation, branchName, email, joiningDate, firstName, lastName, username, branchId,  } = req.body;
 
   // Validate input data
   if (
@@ -949,11 +949,11 @@ app.post("/api/users/create-user", rolesMiddleware(["superadmin", "admin","branc
     //   },
     // };
 
-    const { Items } = await dynamoDbClient.send(new ScanCommand(checkEmailParams));
+    //const { Items } = await dynamoDbClient.send(new ScanCommand(checkEmailParams));
 
-    if (Items.length > 0) {
-      return res.status(400).json({ message: 'User with the provided email already exists' });
-    }
+    // if (Items.length > 0) {
+    //   return res.status(400).json({ message: 'User with the provided email already exists' });
+    // }
 
     // Upload image if provided
     let imageUrl = '';
