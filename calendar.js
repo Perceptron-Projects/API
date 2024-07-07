@@ -1,8 +1,8 @@
-require('dotenv').config();
+require("dotenv").config();
 
 const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
 const { ScanCommand } = require("@aws-sdk/client-dynamodb");
-
+const cors = require("cors");
 const {
   DynamoDBDocumentClient,
   GetCommand,
@@ -14,7 +14,7 @@ const express = require("express");
 const serverless = require("serverless-http");
 const { authenticateToken } = require("./middlewares/authMiddleware");
 const { rolesMiddleware } = require("./middlewares/rolesMiddleware");
-const errors = require('./config/errors');
+const errors = require("./config/errors");
 const { v4: uuidv4 } = require("uuid");
 const app = express();
 
@@ -24,7 +24,9 @@ const LEAVES_CALENDAR_TABLE = process.env.LEAVES_CALENDAR_TABLE;
 const client = new DynamoDBClient();
 const dynamoDbClient = DynamoDBDocumentClient.from(client);
 
-const JWT_SECRET = process.env.JWT_SECRET; 
+const JWT_SECRET = process.env.JWT_SECRET;
+app.use(cors());
+
 app.use(express.json());
 
 app.use((req, res, next) => {
@@ -50,54 +52,25 @@ function isValidDate(dateString) {
   return d.toISOString().slice(0, 10) === dateString;
 }
 
-app.get("/api/calendar/leaves/:day/:employeeId", rolesMiddleware(["admin","hr","employee"]), async function (req, res) {
-  try {
-    const day = req.params.day;
-    const employeeId = req.params.employeeId;
+app.get(
+  "/api/calendar/leaves/:day/:employeeId",
+  rolesMiddleware(["admin", "hr", "employee"]),
+  async function (req, res) {
+    try {
+      const day = req.params.day;
+      const employeeId = req.params.employeeId;
 
-    if (!isValidDate(day)) {
-      return res.status(400).json({ error: 'Invalid date format for "day"' });
-    } else if (typeof employeeId !== "string") {
-      return res.status(400).json({ error: '"employeeId" must be a string' });
-    }
+      if (!isValidDate(day)) {
+        return res.status(400).json({ error: 'Invalid date format for "day"' });
+      } else if (typeof employeeId !== "string") {
+        return res.status(400).json({ error: '"employeeId" must be a string' });
+      }
 
-    const params = {
-      TableName: LEAVES_CALENDAR_TABLE,
-      Key: {
-        Day: day,
-        EmployeeId: employeeId,
-      },
-    };
-
-    const { Item } = await dynamoDbClient.send(new GetCommand(params));
-
-    if (Item) {
-      res.json(Item);
-    } else {
-      res
-        .status(404)
-        .json({
-          error: errors.leaveNotFound,
-        });
-    }
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: errors.retrieveLeaveError });
-  }
-});
-
-app.get("/api/calendar/holidays/:day", rolesMiddleware(["admin","hr","employee"]), async function (req, res) {
-   try {
-    const day = req.params.day;
-    console.log(day);
-
-    if (!isValidDate(day)) {
-      return res.status(400).json({ error: 'Invalid date format for "day"' });
-    } else {
       const params = {
-        TableName: HOLIDAY_CALENDAR_TABLE,
+        TableName: LEAVES_CALENDAR_TABLE,
         Key: {
           Day: day,
+          EmployeeId: employeeId,
         },
       };
 
@@ -106,16 +79,49 @@ app.get("/api/calendar/holidays/:day", rolesMiddleware(["admin","hr","employee"]
       if (Item) {
         res.json(Item);
       } else {
-        res
-          .status(404)
-          .json({ error:errors.holidayNotFound});
+        res.status(404).json({
+          error: errors.leaveNotFound,
+        });
       }
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: errors.retrieveLeaveError });
     }
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: errors.retrieveHolidayError });
   }
-});
+);
+
+app.get(
+  "/api/calendar/holidays/:day",
+  rolesMiddleware(["admin", "hr", "employee"]),
+  async function (req, res) {
+    try {
+      const day = req.params.day;
+      console.log(day);
+
+      if (!isValidDate(day)) {
+        return res.status(400).json({ error: 'Invalid date format for "day"' });
+      } else {
+        const params = {
+          TableName: HOLIDAY_CALENDAR_TABLE,
+          Key: {
+            Day: day,
+          },
+        };
+
+        const { Item } = await dynamoDbClient.send(new GetCommand(params));
+
+        if (Item) {
+          res.json(Item);
+        } else {
+          res.status(404).json({ error: errors.holidayNotFound });
+        }
+      }
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: errors.retrieveHolidayError });
+    }
+  }
+);
 
 app.post(
   "/api/calendar/holidays",
@@ -174,98 +180,107 @@ app.get(
   }
 );
 
-        
-app.get("/api/calendar/leaves/:day/:employeeId", rolesMiddleware(["admin","hr","employee"]), async function (req, res) {
-  try {
-    const day = req.params.day;
-    const employeeId = req.params.employeeId;
+app.get(
+  "/api/calendar/leaves/:day/:employeeId",
+  rolesMiddleware(["admin", "hr", "employee"]),
+  async function (req, res) {
+    try {
+      const day = req.params.day;
+      const employeeId = req.params.employeeId;
 
-    if (!isValidDate(day)) {
-      return res.status(400).json({ error: 'Invalid date format for "day"' });
-    } else if (typeof employeeId !== "string") {
-      return res.status(400).json({ error: '"employeeId" must be a string' });
-    }
+      if (!isValidDate(day)) {
+        return res.status(400).json({ error: 'Invalid date format for "day"' });
+      } else if (typeof employeeId !== "string") {
+        return res.status(400).json({ error: '"employeeId" must be a string' });
+      }
 
-    const params = {
-      TableName: LEAVES_CALENDAR_TABLE,
-      Key: {
-        Day: day,
-        EmployeeId: employeeId,
-      },
-    };
+      const params = {
+        TableName: LEAVES_CALENDAR_TABLE,
+        Key: {
+          Day: day,
+          EmployeeId: employeeId,
+        },
+      };
 
-    const { Item } = await dynamoDbClient.send(new GetCommand(params));
+      const { Item } = await dynamoDbClient.send(new GetCommand(params));
 
-    if (Item) {
-      res.json(Item);
-    } else {
-      res
-        .status(404)
-        .json({
+      if (Item) {
+        res.json(Item);
+      } else {
+        res.status(404).json({
           error: errors.leaveNotFound,
         });
+      }
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: errors.retrieveLeaveError });
     }
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: errors.retrieveLeaveError });
   }
-});
-        
-app.get("/api/calendar/leaves/all", rolesMiddleware(["admin","hr"]), async function (req, res) {
-   try {
+);
+
+app.get(
+  "/api/calendar/leaves/all",
+  rolesMiddleware(["admin", "hr"]),
+  async function (req, res) {
+    try {
       const params = {
-          TableName: LEAVES_CALENDAR_TABLE,
+        TableName: LEAVES_CALENDAR_TABLE,
       };
 
       const { Items } = await dynamoDbClient.send(new ScanCommand(params));
 
       if (Items && Items.length > 0) {
-        const formattedItems = Items.map(item => {
+        const formattedItems = Items.map((item) => {
           return {
-              LeaveType: item.LeaveType.S,
-              EmployeeId: item.EmployeeId.S,
-              Day: item.Day.S,
+            LeaveType: item.LeaveType.S,
+            EmployeeId: item.EmployeeId.S,
+            Day: item.Day.S,
           };
-      });
+        });
 
-      res.json(formattedItems);
+        res.json(formattedItems);
       } else {
-          res.status(404).json({ error: errors.noLeavesFound });
+        res.status(404).json({ error: errors.noLeavesFound });
       }
-  } catch (error) {
+    } catch (error) {
       console.error(error);
       res.status(500).json({ error: errors.retrieveAllLeavesError });
+    }
   }
-});
-        
-app.post("/api/calendar/leaves", rolesMiddleware(["admin","hr","employee"]), async function (req, res) {
-  const { day, empId, leaveType } = req.body;
+);
 
-  if (typeof day !== "string") {
-    res.status(400).json({ error: '"day" must be a string' });
-  } else if (typeof empId !== "string") {
-    res.status(400).json({ error: '"empId" must be a string' });
-  } else if (typeof leaveType !== "string") {
-    res.status(400).json({ error: '"leaveType" must be a string' });
+app.post(
+  "/api/calendar/leaves",
+  rolesMiddleware(["admin", "hr", "employee"]),
+  async function (req, res) {
+    const { day, empId, leaveType } = req.body;
+
+    if (typeof day !== "string") {
+      res.status(400).json({ error: '"day" must be a string' });
+    } else if (typeof empId !== "string") {
+      res.status(400).json({ error: '"empId" must be a string' });
+    } else if (typeof leaveType !== "string") {
+      res.status(400).json({ error: '"leaveType" must be a string' });
+    }
+
+    const params = {
+      TableName: LEAVES_CALENDAR_TABLE,
+      Item: {
+        Day: day,
+        EmployeeId: empId,
+        LeaveType: leaveType,
+      },
+    };
+
+    try {
+      await dynamoDbClient.send(new PutCommand(params));
+      res.json({ day, empId, leaveType });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: errors.createLeaveError });
+    }
   }
-
-  const params = {
-    TableName: LEAVES_CALENDAR_TABLE,
-    Item: {
-      Day: day,
-      EmployeeId: empId,
-      LeaveType: leaveType,
-    },
-  };
-
-  try {
-    await dynamoDbClient.send(new PutCommand(params));
-    res.json({ day, empId, leaveType });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: errors.createLeaveError });
-  }
-});
+);
 
 //delete a holiday
 app.delete(
@@ -322,7 +337,5 @@ app.put("/api/calendar/holidays/:holidayId", async function (req, res) {
     res.status(500).json({ error: errors.updateHolidayError });
   }
 });
-
-
 
 module.exports.handler = serverless(app);
