@@ -940,14 +940,14 @@ app.post("/api/users/create-user", rolesMiddleware(["superadmin", "admin","branc
     }
 
   try {
-    // Check if email already exists
-    const checkEmailParams = {
-      TableName: EMPLOYEES_TABLE,
-      FilterExpression: 'email = :email',
-      ExpressionAttributeValues: {
-        ':email': email,
-      },
-    };
+    // // Check if email already exists
+    // const checkEmailParams = {
+    //   TableName: EMPLOYEES_TABLE,
+    //   FilterExpression: 'email = :email',
+    //   ExpressionAttributeValues: {
+    //     ':email': email,
+    //   },
+    // };
 
     const { Items } = await dynamoDbClient.send(new ScanCommand(checkEmailParams));
 
